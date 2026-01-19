@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { Shield, Lock, LockOpen, Plus, ArrowLeft, Trash2, X, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import Toast from "../components/layout/Toast";
 
-const API_URL = import.meta.env.REACT_APP_API_URL || "http://localhost:5000/api";
+const API_URL = import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:5000/api" : "/api");
 
 const VaultSelector = () => {
   const { setActiveVault } = useVault();
