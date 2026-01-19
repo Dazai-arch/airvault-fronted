@@ -166,7 +166,7 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
+  service: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
@@ -933,11 +933,6 @@ app.get('/api/auth/check-session', (req, res) => {
 
   // Serve static files from React build (in same directory)
   app.use(express.static(path.join(__dirname, 'dist')));
-  
-  // Handle React routing - return index.html for all non-API routes
-  app.get((req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
 
 
 // ERROR HANDLER
@@ -953,6 +948,10 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ message: 'Route not found' });
 });
+
+app.get((req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  });
 
 // START SERVER
 app.listen(PORT, () => {
