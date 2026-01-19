@@ -60,7 +60,7 @@ app.use(session({
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: true,
     sameSite: 'strict'
   }
 }));
@@ -166,7 +166,7 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
+  host: 'smtp.gmail.com',
   port: Number(process.env.EMAIL_PORT),
   secure: false,
   auth: {
