@@ -961,7 +961,7 @@ app.use((err, req, res, next) => {
 });
 
 // 404 HANDLER
-app.use('/api/*', (req, res) => {
+app.use((req, res) => {
   res.status(404).json({ message: 'API route not found' });
 });
 
