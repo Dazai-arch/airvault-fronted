@@ -166,7 +166,9 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'gmail',
+  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
@@ -933,7 +935,7 @@ app.get('/api/auth/check-session', (req, res) => {
   app.use(express.static(path.join(__dirname, 'dist')));
   
   // Handle React routing - return index.html for all non-API routes
-  app.get("*",(req, res) => {
+  app.get((req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
   });
 
