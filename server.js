@@ -418,16 +418,27 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
+    // 🔐 Generate OTP
     const otp = generateOTP();
     await OTP.create({ email, otp, type: 'login' });
     await sendOTPEmail(email, otp, user.fullName);
 
-    req.session.tempLoginUserId = user._id.toString();
+    // 🔥 Temporary token for OTP verification
+    const tempToken = jwt.sign(
+      { userId: user._id, purpose: 'login-otp' },
+      process.env.JWT_SECRET,
+      { expiresIn: '5m' }
+    );
 
-    res.status(200).json({ message: 'OTP sent to your email', email, requiresOTP: true });
+    return res.status(200).json({
+      message: 'OTP sent to your email',
+      requiresOTP: true,
+      tempToken
+    });
+
   } catch (error) {
     console.error('Login Error:', error);
-    res.status(500).json({ message: 'Server error during login' });
+    return res.status(500).json({ message: 'Server error during login' });
   }
 });
 
