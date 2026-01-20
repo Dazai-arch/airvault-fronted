@@ -71,7 +71,8 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 24 * 7,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', // ✅ Changed
+    domain: process.env.NODE_ENV === 'production' ? '.render.com' : undefined // ✅ Added
   }
 }));
 
@@ -345,16 +346,13 @@ app.post('/api/auth/signup', authLimiter, upload.single('profilePicture'), async
     const hashedPassword = await bcrypt.hash(password, 12);
     const otp = generateOTP();
 
-    // Save OTP first
     await OTP.create({ email, otp, type: 'signup' });
     
-    // Try to send email
     try {
       await sendOTPEmail(email, otp, fullName);
       console.log('✅ Signup OTP email sent successfully to:', email);
     } catch (emailError) {
       console.error('❌ Email sending failed:', emailError.message);
-      // Delete the OTP since email failed
       await OTP.deleteMany({ email, type: 'signup' });
       
       return res.status(503).json({ 
@@ -363,16 +361,11 @@ app.post('/api/auth/signup', authLimiter, upload.single('profilePicture'), async
       });
     }
 
-    req.session.tempUserData = {
-      fullName,
-      email,
-      password: hashedPassword,
-      profilePicture: req.file ? `/uploads/profiles/${req.file.filename}` : null
-    };
-
+    // ✅ Send hashed password back (frontend will send it back during verification)
     res.status(200).json({ 
       message: 'OTP sent to your email', 
-      email, 
+      email,
+      hashedPassword, // ✅ Frontend stores this temporarily
       requiresOTP: true 
     });
   } catch (error) {
@@ -386,40 +379,47 @@ app.post('/api/auth/signup', authLimiter, upload.single('profilePicture'), async
 // VERIFY SIGNUP OTP
 app.post('/api/auth/verify-signup-otp', authLimiter, async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, tempUserData } = req.body; // ✅ Get from body
+    
     const otpRecord = await OTP.findOne({ email, otp, type: 'signup' });
 
     if (!otpRecord) {
       return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
-    const tempUserData = req.session.tempUserData;
-    if (!tempUserData || tempUserData.email !== email) {
-      return res.status(400).json({ message: 'Session expired. Please signup again' });
+    // ✅ Use data from request body instead of session
+    if (!tempUserData || !tempUserData.fullName || !tempUserData.password) {
+      return res.status(400).json({ message: 'Invalid user data. Please signup again' });
     }
 
     const newUser = await User.create({
       fullName: tempUserData.fullName,
-      email: tempUserData.email,
-      password: tempUserData.password,
-      profilePicture: tempUserData.profilePicture,
+      email: email,
+      password: tempUserData.password, // Already hashed from signup
+      profilePicture: tempUserData.profilePicture || null,
       isVerified: true,
       lastLogin: new Date()
     });
 
     await OTP.deleteOne({ _id: otpRecord._id });
-    delete req.session.tempUserData;
     await createAuditLog(newUser._id, email, 'SIGNUP_SUCCESS', req);
 
-    const token = jwt.sign({ userId: newUser._id, email: newUser.email }, process.env.JWT_SECRET || 'your-secret-key', { expiresIn: '7d' });
-
-    req.session.userId = newUser._id;
-    req.session.email = newUser.email;
+    const token = jwt.sign(
+      { userId: newUser._id, email: newUser.email },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
 
     res.status(201).json({
       message: 'Account created successfully',
       token,
-      user: { id: newUser._id, fullName: newUser.fullName, email: newUser.email, profilePicture: newUser.profilePicture, vaultCreated: newUser.vaultCreated },
+      user: {
+        id: newUser._id,
+        fullName: newUser.fullName,
+        email: newUser.email,
+        profilePicture: newUser.profilePicture,
+        vaultCreated: newUser.vaultCreated
+      },
       redirectTo: '/createvaults'
     });
   } catch (error) {

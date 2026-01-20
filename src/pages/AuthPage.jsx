@@ -40,7 +40,7 @@ const AuthPage = () => {
   const [otpType, setOtpType] = useState("login"); 
   const fileRef = useRef(null);
   const otpRef = useRef([]);
-
+  const [tempUserData, setTempUserData] = useState(null);
 
   useEffect(() => {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -144,6 +144,7 @@ const AuthPage = () => {
     setError('Passwords do not match');
     return;
   }
+  
   setLoading(true);
   try {
     const formData = new FormData();
@@ -159,11 +160,21 @@ const AuthPage = () => {
       body: formData,
     });
     const data = await response.json();
+    
     if (response.ok) {
-      setSuccess(data.message);
-      setOtpType("signup"); // Set the type
-      setPage("otp");
-    } else {
+  setSuccess(data.message);
+  setOtpType("signup");
+  
+  // ✅ Store hashed password from server
+  setTempUserData({
+    fullName: form.fullName,
+    email: form.email,
+    password: data.hashedPassword, // ✅ Already hashed by server
+    profilePicture: profileFile
+  });
+  
+  setPage("otp");
+} else {
       setError(data.message);
     }
   } catch (err) {
@@ -182,29 +193,42 @@ const handleVerifyOtp = async () => {
     setError("Please enter all 6 digits");
     return;
   }
+  
   setLoading(true);
   try {
     const endpoint = otpType === "signup" 
       ? "/auth/verify-signup-otp" 
       : "/auth/verify-login-otp";
     
+    // ✅ Send temp data with OTP verification for signup
+    const body = otpType === "signup" && tempUserData
+      ? {
+          email: form.email,
+          otp: otpCode,
+          tempUserData: {
+            fullName: tempUserData.fullName,
+            password: tempUserData.password
+          }
+        }
+      : { email: form.email, otp: otpCode };
     
     const response = await fetch(`${API_URL}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ email: form.email, otp: otpCode }),
+      body: JSON.stringify(body),
     });
+    
     const data = await response.json();
     
     if (response.ok) {
+      // Clear temp data
+      setTempUserData(null);
       
-      // Clear any existing tokens first
       localStorage.removeItem("token");
       sessionStorage.removeItem("token");
       localStorage.removeItem("user");
       
-      // Store token based on Remember Me
       if (otpType === "login") {
         if (rememberMe) {
           localStorage.setItem("token", data.token);
@@ -212,17 +236,13 @@ const handleVerifyOtp = async () => {
           sessionStorage.setItem("token", data.token);
         }
       } else {
-        // For signup, always use localStorage
         localStorage.setItem("token", data.token);
       }
       
-      // Always store user in localStorage
       localStorage.setItem("user", JSON.stringify(data.user));
       
-      // Verify storage
       const verifyToken = localStorage.getItem("token") || sessionStorage.getItem("token");
       const verifyUser = localStorage.getItem("user");
-      
       
       if (!verifyToken || !verifyUser) {
         console.error("❌ Storage verification failed!");
@@ -232,13 +252,11 @@ const handleVerifyOtp = async () => {
       
       setSuccess(data.message);
       
-      // Small delay to ensure state updates and storage is complete
       setTimeout(() => {
         navigate(data.redirectTo || "/createvaults", { replace: true });
       }, 100);
       
     } else {
-      console.error("❌ OTP verification failed:", data.message);
       setError(data.message);
     }
   } catch (err) {
