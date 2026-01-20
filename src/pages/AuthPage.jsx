@@ -78,27 +78,53 @@ const AuthPage = () => {
   const handleLogin = async () => {
   setError('');
   setSuccess('');
+  
+  // Validate inputs before making request
+  if (!form.email || !form.password) {
+    setError('Please enter both email and password');
+    return;
+  }
+  
   setLoading(true);
+  
   try {
+    console.log('🔵 Attempting login for:', form.email);
+    
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ email: form.email, password: form.password })
+      body: JSON.stringify({ 
+        email: form.email.trim(), 
+        password: form.password 
+      })
     });
+    
+    console.log('🔵 Response status:', response.status);
+    
     const data = await response.json();
+    console.log('🔵 Response data:', data);
+    
     if (response.ok) {
-      setSuccess(data.message);
-      setOtpType("login"); // Set the type
-      setPage("otp"); // Navigate to OTP page
+      console.log('✅ Login successful, navigating to OTP page');
+      setSuccess(data.message || 'OTP sent successfully');
+      setOtpType("login");
+      
+      // Clear OTP fields before navigating
+      setOtp(["", "", "", "", "", ""]);
+      
+      // Navigate to OTP page
+      setPage("otp");
     } else if (response.status === 429) {
+      console.log('❌ Rate limit exceeded');
       setError(data.message || 'Too many login attempts. Please try again later.');
-      return;
     } else {
-      setError(data.message);
+      console.log('❌ Login failed:', data.message);
+      setError(data.message || 'Login failed. Please try again.');
     }
   } catch (err) {
-    setError('Network error. Please try again.');
+    console.error('❌ Network error during login:', err);
+    setError('Network error. Please check your connection and try again.');
   } finally {
     setLoading(false);
   }
