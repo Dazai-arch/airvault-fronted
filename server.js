@@ -176,7 +176,7 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
+  host: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
   port: Number(process.env.EMAIL_PORT),
   secure: false,
   auth: {
