@@ -176,37 +176,15 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use TLS
+  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
+  port: Number(process.env.EMAIL_PORT),
+  secure: false,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
-  },
-  tls: {
-    rejectUnauthorized: false
-  },
-  // Add connection timeout
-  connectionTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000,
-  socketTimeout: 10000
-});
-
-// Verify transporter configuration on startup
-transporter.verify(function(error, success) {
-  if (error) {
-    console.error('❌ SMTP Configuration Error:', error);
-    console.log('⚠️  Email notifications will NOT work. Please check:');
-    console.log('   1. EMAIL_USER and EMAIL_PASSWORD in .env');
-    console.log('   2. Gmail App Password is correctly generated');
-    console.log('   3. Less secure app access or 2FA + App Password enabled');
-  } else {
-    console.log('✅ SMTP Server is ready to send emails');
   }
 });
 
-// Updated sendOTPEmail with better error handling
 const sendOTPEmail = async (email, otp, userName) => {
   const mailOptions = {
     from: `"AirVault Security" <${process.env.EMAIL_USER}>`,
@@ -221,6 +199,7 @@ const sendOTPEmail = async (email, otp, userName) => {
           .container { max-width: 600px; margin: 40px auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
           .header { background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); padding: 40px 30px; text-align: center; }
           .logo { width: 60px; height: 60px; background: white; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2); }
+          .logo img { width: 36px; height: 36px; }
           .header h1 { color: white; margin: 0; font-size: 28px; font-weight: 700; }
           .content { padding: 40px 30px; color: #cbd5e1; }
           .greeting { font-size: 18px; margin-bottom: 20px; color: #e2e8f0; }
@@ -232,43 +211,38 @@ const sendOTPEmail = async (email, otp, userName) => {
           .warning { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 15px; margin: 25px 0; border-radius: 8px; font-size: 14px; color: #fca5a5; }
           .footer { background: #0f172a; padding: 30px; text-align: center; border-top: 1px solid #1e293b; }
           .footer p { color: #64748b; font-size: 13px; margin: 5px 0; }
+          .footer-link { color: #3b82f6; text-decoration: none; }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <div class="logo">🛡️</div>
+            <div class="logo">
+              <img src="${process.env.BACKEND_URL}/assets/shield.png" alt="AirVault Shield" />
+            </div>
             <h1>AirVault</h1>
           </div>
           <div class="content">
             <div class="greeting">Hi ${userName || 'there'},</div>
-            <div class="message">You recently tried to log in. Please use the verification code below to continue.</div>
+            <div class="message">You recently tried to log in from a new device, browser, or location. In order to complete your login, please use the verification code below.</div>
             <div class="otp-box">
               <div class="otp-label">Your Verification Code</div>
               <div class="otp-code">${otp}</div>
-              <div class="expiry">⏱ This code expires in 10 minutes</div>
+              <div class="expiry">â± This code expires in 10 minutes</div>
             </div>
             <div class="message">Enter this code in the verification screen to continue accessing your secure vault.</div>
-            <div class="warning"><strong>⚠️ Security Notice:</strong> If this wasn't you, please secure your account immediately.</div>
+            <div class="warning"><strong>âš ï¸ Security Notice:</strong> If this wasn't you, your account may be compromised. Please secure your account immediately.</div>
           </div>
           <div class="footer">
             <p>This is an automated message from AirVault Security System.</p>
-            <p>© ${new Date().getFullYear()} AirVault. All rights reserved.</p>
+            <p>Â© ${new Date().getFullYear()} AirVault. All rights reserved.</p>
           </div>
         </div>
       </body>
       </html>
     `
   };
-
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Email sent successfully:', info.messageId);
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    console.error('❌ Email sending failed:', error.message);
-    throw new Error('Failed to send verification email. Please try again later.');
-  }
+  await transporter.sendMail(mailOptions);
 };
 
 // ====================================
