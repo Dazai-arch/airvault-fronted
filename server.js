@@ -176,15 +176,37 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
-  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
-  port: Number(process.env.EMAIL_PORT),
-  secure: false,
+  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
+  },
+  tls: {
+    rejectUnauthorized: false
+  },
+  // Add connection timeout
+  connectionTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000,
+  socketTimeout: 10000
+});
+
+// Verify transporter configuration on startup
+transporter.verify(function(error, success) {
+  if (error) {
+    console.error('❌ SMTP Configuration Error:', error);
+    console.log('⚠️  Email notifications will NOT work. Please check:');
+    console.log('   1. EMAIL_USER and EMAIL_PASSWORD in .env');
+    console.log('   2. Gmail App Password is correctly generated');
+    console.log('   3. Less secure app access or 2FA + App Password enabled');
+  } else {
+    console.log('✅ SMTP Server is ready to send emails');
   }
 });
 
+// Updated sendOTPEmail with better error handling
 const sendOTPEmail = async (email, otp, userName) => {
   const mailOptions = {
     from: `"AirVault Security" <${process.env.EMAIL_USER}>`,
@@ -199,7 +221,6 @@ const sendOTPEmail = async (email, otp, userName) => {
           .container { max-width: 600px; margin: 40px auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); }
           .header { background: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%); padding: 40px 30px; text-align: center; }
           .logo { width: 60px; height: 60px; background: white; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 15px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2); }
-          .logo img { width: 36px; height: 36px; }
           .header h1 { color: white; margin: 0; font-size: 28px; font-weight: 700; }
           .content { padding: 40px 30px; color: #cbd5e1; }
           .greeting { font-size: 18px; margin-bottom: 20px; color: #e2e8f0; }
@@ -211,27 +232,24 @@ const sendOTPEmail = async (email, otp, userName) => {
           .warning { background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; padding: 15px; margin: 25px 0; border-radius: 8px; font-size: 14px; color: #fca5a5; }
           .footer { background: #0f172a; padding: 30px; text-align: center; border-top: 1px solid #1e293b; }
           .footer p { color: #64748b; font-size: 13px; margin: 5px 0; }
-          .footer-link { color: #3b82f6; text-decoration: none; }
         </style>
       </head>
       <body>
         <div class="container">
           <div class="header">
-            <div class="logo">
-              <img src="${process.env.BACKEND_URL}/assets/shield.png" alt="AirVault Shield" />
-            </div>
+            <div class="logo">🛡️</div>
             <h1>AirVault</h1>
           </div>
           <div class="content">
             <div class="greeting">Hi ${userName || 'there'},</div>
-            <div class="message">You recently tried to log in from a new device, browser, or location. In order to complete your login, please use the verification code below.</div>
+            <div class="message">You recently tried to log in. Please use the verification code below to continue.</div>
             <div class="otp-box">
               <div class="otp-label">Your Verification Code</div>
               <div class="otp-code">${otp}</div>
               <div class="expiry">⏱ This code expires in 10 minutes</div>
             </div>
             <div class="message">Enter this code in the verification screen to continue accessing your secure vault.</div>
-            <div class="warning"><strong>⚠️ Security Notice:</strong> If this wasn't you, your account may be compromised. Please secure your account immediately.</div>
+            <div class="warning"><strong>⚠️ Security Notice:</strong> If this wasn't you, please secure your account immediately.</div>
           </div>
           <div class="footer">
             <p>This is an automated message from AirVault Security System.</p>
@@ -242,7 +260,15 @@ const sendOTPEmail = async (email, otp, userName) => {
       </html>
     `
   };
-  await transporter.sendMail(mailOptions);
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Email sent successfully:', info.messageId);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error('❌ Email sending failed:', error.message);
+    throw new Error('Failed to send verification email. Please try again later.');
+  }
 };
 
 // ====================================
@@ -345,8 +371,23 @@ app.post('/api/auth/signup', authLimiter, upload.single('profilePicture'), async
     const hashedPassword = await bcrypt.hash(password, 12);
     const otp = generateOTP();
 
+    // Save OTP first
     await OTP.create({ email, otp, type: 'signup' });
-    await sendOTPEmail(email, otp, fullName);
+    
+    // Try to send email
+    try {
+      await sendOTPEmail(email, otp, fullName);
+      console.log('✅ Signup OTP email sent successfully to:', email);
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', emailError.message);
+      // Delete the OTP since email failed
+      await OTP.deleteMany({ email, type: 'signup' });
+      
+      return res.status(503).json({ 
+        message: 'Unable to send verification email. Please check your email configuration or try again later.',
+        error: 'EMAIL_SERVICE_UNAVAILABLE'
+      });
+    }
 
     req.session.tempUserData = {
       fullName,
@@ -355,13 +396,19 @@ app.post('/api/auth/signup', authLimiter, upload.single('profilePicture'), async
       profilePicture: req.file ? `/uploads/profiles/${req.file.filename}` : null
     };
 
-    res.status(200).json({ message: 'OTP sent to your email', email, requiresOTP: true });
+    res.status(200).json({ 
+      message: 'OTP sent to your email', 
+      email, 
+      requiresOTP: true 
+    });
   } catch (error) {
-    console.error('Signup Error:', error);
-    res.status(500).json({ message: 'Server error during signup' });
+    console.error('❌ Signup Error:', error);
+    res.status(500).json({ 
+      message: 'Server error during signup',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
-
 // VERIFY SIGNUP OTP
 app.post('/api/auth/verify-signup-otp', authLimiter, async (req, res) => {
   try {
@@ -429,15 +476,38 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     }
 
     const otp = generateOTP();
+    
+    // Save OTP first
     await OTP.create({ email, otp, type: 'login' });
-    await sendOTPEmail(email, otp, user.fullName);
+    
+    // Try to send email
+    try {
+      await sendOTPEmail(email, otp, user.fullName);
+      console.log('✅ OTP email sent successfully to:', email);
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', emailError.message);
+      // Delete the OTP since email failed
+      await OTP.deleteMany({ email, type: 'login' });
+      
+      return res.status(503).json({ 
+        message: 'Unable to send verification email. Please check your email configuration or try again later.',
+        error: 'EMAIL_SERVICE_UNAVAILABLE'
+      });
+    }
 
     req.session.tempLoginUserId = user._id.toString();
 
-    res.status(200).json({ message: 'OTP sent to your email', email, requiresOTP: true });
+    res.status(200).json({ 
+      message: 'OTP sent to your email', 
+      email, 
+      requiresOTP: true 
+    });
   } catch (error) {
-    console.error('Login Error:', error);
-    res.status(500).json({ message: 'Server error during login' });
+    console.error('❌ Login Error:', error);
+    res.status(500).json({ 
+      message: 'Server error during login',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -496,16 +566,38 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
     }
 
     const otp = generateOTP();
+    
+    // Save OTP first
     await OTP.create({ email, otp, type: 'forgot-password' });
-    await sendOTPEmail(email, otp, user.fullName);
+    
+    // Try to send email
+    try {
+      await sendOTPEmail(email, otp, user.fullName);
+      console.log('✅ Forgot password OTP email sent successfully to:', email);
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', emailError.message);
+      // Delete the OTP since email failed
+      await OTP.deleteMany({ email, type: 'forgot-password' });
+      
+      return res.status(503).json({ 
+        message: 'Unable to send verification email. Please check your email configuration or try again later.',
+        error: 'EMAIL_SERVICE_UNAVAILABLE'
+      });
+    }
 
-    res.status(200).json({ message: 'OTP sent to your email', email, requiresOTP: true });
+    res.status(200).json({ 
+      message: 'OTP sent to your email', 
+      email, 
+      requiresOTP: true 
+    });
   } catch (error) {
-    console.error('Forgot Password Error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Forgot Password Error:', error);
+    res.status(500).json({ 
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
-
 // VERIFY FORGOT PASSWORD OTP
 app.post('/api/auth/verify-forgot-password-otp', authLimiter, async (req, res) => {
   try {
