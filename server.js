@@ -31,18 +31,36 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// IMPORTANT: CORS must come BEFORE other middleware
+// ====================================
+// FIXED CORS AND SESSION CONFIGURATION
+// ====================================
+// CORS Configuration - MUST come before other middleware
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL,
-    'http://localhost:5173', // For local development
-    'http://localhost:3000'  // Alternative local port
-  ],
+  origin: function(origin, callback) {
+    const allowedOrigins = [
+      process.env.FRONTEND_URL,
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://your-app.vercel.app' // Add your Vercel URL
+    ].filter(Boolean); // Remove undefined values
+    
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('❌ CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  exposedHeaders: ['set-cookie']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['set-cookie'],
+  optionsSuccessStatus: 200
+})) ;
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static('uploads'));
@@ -68,11 +86,13 @@ app.use(session({
     touchAfter: 24 * 3600
   }),
   cookie: {
-    maxAge: 1000 * 60 * 60 * 24 * 7,
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
-  }
+    secure: process.env.NODE_ENV === 'production', // true in production
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-domain
+    domain: process.env.NODE_ENV === 'production' ? process.env.COOKIE_DOMAIN : undefined
+  },
+  proxy: true // IMPORTANT for Render
 }));
 
 // Rate Limiting
@@ -176,9 +196,13 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
+<<<<<<< HEAD
   service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
   port: Number(process.env.EMAIL_PORT),
   secure: false,
+=======
+  service: 'Gmail',
+>>>>>>> 633fcb2d761ad67c80f98516bc3bc66a99a86333
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
@@ -407,7 +431,7 @@ app.post('/api/auth/verify-signup-otp', authLimiter, async (req, res) => {
   }
 });
 
-// LOGIN
+// LOGIN - FIXED VERSION
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -429,6 +453,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     }
 
     const otp = generateOTP();
+<<<<<<< HEAD
     await OTP.create({ email, otp, type: 'login' });
     await sendOTPEmail(email, otp, user.fullName);
 
@@ -438,6 +463,57 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   } catch (error) {
     console.error('Login Error:', error);
     res.status(500).json({ message: 'Server error during login' });
+=======
+    console.log('🔵 Generated OTP:', otp);
+    
+    // Save OTP to database
+    await OTP.create({ email: email.toLowerCase().trim(), otp, type: 'login' });
+    console.log('🔵 OTP saved to database');
+    
+    // Send OTP email
+    try {
+      await sendOTPEmail(email, otp, user.fullName);
+      console.log('✅ OTP email sent successfully');
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', emailError);
+      // Delete the OTP if email fails
+      await OTP.deleteMany({ email: email.toLowerCase().trim(), type: 'login' });
+      return res.status(500).json({ 
+        message: 'Failed to send OTP email. Please try again.' 
+      });
+    }
+
+    // Store user ID in session for OTP verification
+    req.session.tempLoginUserId = user._id.toString();
+    req.session.tempLoginEmail = email.toLowerCase().trim();
+    
+    // IMPORTANT: Save session before responding
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session save error:', err);
+          reject(err);
+        } else {
+          console.log('✅ Session saved successfully');
+          resolve();
+        }
+      });
+    });
+    
+    console.log('✅ Login successful, sending response');
+    return res.status(200).json({ 
+      message: 'OTP sent to your email', 
+      email: email,
+      requiresOTP: true 
+    });
+    
+  } catch (error) {
+    console.error('❌ Login Error:', error);
+    return res.status(500).json({ 
+      message: 'Server error during login', 
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+>>>>>>> 633fcb2d761ad67c80f98516bc3bc66a99a86333
   }
 });
 
