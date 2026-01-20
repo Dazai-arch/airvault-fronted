@@ -74,8 +74,8 @@ const AuthPage = () => {
     }
   };
 
-  // Login Handler - FIXED VERSION
-const handleLogin = async () => {
+  // Login Handler
+  const handleLogin = async () => {
   setError('');
   setSuccess('');
   
@@ -105,23 +105,16 @@ const handleLogin = async () => {
     const data = await response.json();
     console.log('🔵 Response data:', data);
     
-    if (response.ok && data.requiresOTP) {
+    if (response.ok) {
       console.log('✅ Login successful, navigating to OTP page');
+      setSuccess(data.message || 'OTP sent successfully');
+      setOtpType("login");
       
       // Clear OTP fields before navigating
       setOtp(["", "", "", "", "", ""]);
       
-      // Set the OTP type FIRST
-      setOtpType("login");
-      
-      // Show success message
-      setSuccess(data.message || 'OTP sent successfully');
-      
-      // Small delay to ensure state updates, then navigate
-      setTimeout(() => {
-        setPage("otp");
-      }, 100);
-      
+      // Navigate to OTP page
+      setPage("otp");
     } else if (response.status === 429) {
       console.log('❌ Rate limit exceeded');
       setError(data.message || 'Too many login attempts. Please try again later.');
@@ -136,8 +129,9 @@ const handleLogin = async () => {
     setLoading(false);
   }
 };
-  // Signup Handler - FIXED VERSION
-const handleSignup = async () => {
+
+  // Signup Handler
+  const handleSignup = async () => {
   setError('');
   setSuccess('');
 
@@ -150,9 +144,7 @@ const handleSignup = async () => {
     setError('Passwords do not match');
     return;
   }
-  
   setLoading(true);
-  
   try {
     const formData = new FormData();
     formData.append("fullName", form.fullName);
@@ -166,28 +158,15 @@ const handleSignup = async () => {
       credentials: "include",
       body: formData,
     });
-    
     const data = await response.json();
-    
-    if (response.ok && data.requiresOTP) {
-      // Clear OTP fields
-      setOtp(["", "", "", "", "", ""]);
-      
-      // Set OTP type FIRST
-      setOtpType("signup");
-      
-      // Show success message
+    if (response.ok) {
       setSuccess(data.message);
-      
-      // Navigate to OTP page with small delay
-      setTimeout(() => {
-        setPage("otp");
-      }, 100);
+      setOtpType("signup"); // Set the type
+      setPage("otp");
     } else {
-      setError(data.message || 'Signup failed. Please try again.');
+      setError(data.message);
     }
   } catch (err) {
-    console.error('Signup error:', err);
     setError("Network error. Please try again.");
   } finally {
     setLoading(false);
@@ -304,49 +283,30 @@ const handleVerifyOtp = async () => {
     }
   };
 
-  // Forgot Password Handler - FIXED VERSION
-const handleForgotPassword = async () => {
-  setError("");
-  setSuccess("");
-  
-  if (!form.email) {
-    setError("Please enter your email address");
-    return;
-  }
-  
-  setLoading(true);
-  
-  try {
-    const response = await fetch(`${API_URL}/auth/forgot-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email: form.email }),
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok && data.requiresOTP) {
-      // Clear OTP fields
-      setOtp(["", "", "", "", "", ""]);
-      
-      // Show success message
-      setSuccess(data.message);
-      
-      // Navigate to forgot OTP page with small delay
-      setTimeout(() => {
+  // Forgot Password Handler
+  const handleForgotPassword = async () => {
+    setError("");
+    setSuccess("");
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email }),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setSuccess(data.message);
         setPage("forgotOtp");
-      }, 100);
-    } else {
-      setError(data.message || 'Failed to send OTP. Please try again.');
+      } else {
+        setError(data.message);
+      }
+    } catch (err) {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Forgot password error:', err);
-    setError("Network error. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // Reset Password Handler
   const handleResetPassword = async () => {
