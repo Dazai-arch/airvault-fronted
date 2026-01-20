@@ -931,13 +931,25 @@ app.get('/api/auth/check-session', (req, res) => {
 });
 
 
-  // Serve static files from React build (in same directory)
-  app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Handle React routing - serve index.html for all non-API routes
+// Place this AFTER all your API routes but BEFORE error handlers
+app.use((req, res, next) => {
+  // Skip if it's an API route
+  if (req.path.startsWith('/api')) {
+    return next();
+  }
   
-  // Handle React routing - return index.html for all non-API routes
-  app.get((req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+  // Serve React app for all other routes
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'), (err) => {
+    if (err) {
+      console.error('Error serving index.html:', err);
+      res.status(500).send('Error loading application');
+    }
   });
+});
+
 
 
 // ERROR HANDLER
@@ -951,9 +963,8 @@ app.use((err, req, res, next) => {
 
 // 404 HANDLER
 app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ message: 'API route not found' });
 });
-
 // START SERVER
 app.listen(PORT, () => {
   console.log(`AirVault Server Running on Port ${PORT}`);
