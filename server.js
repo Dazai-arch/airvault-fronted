@@ -49,8 +49,6 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Handle preflight requests
-app.options('*', cors());
 
 
 // ====================================
