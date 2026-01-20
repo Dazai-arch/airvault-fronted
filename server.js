@@ -86,9 +86,14 @@ app.use(session({
   cookie: {
     maxAge: 1000 * 60 * 60 * 24 * 7,
     httpOnly: true,
+<<<<<<< HEAD
     secure: true, // ✅ Both on HTTPS (Vercel)
     sameSite: 'none', // ✅ Required for cross-origin cookies
     path: '/'
+=======
+    secure: process.env.NODE_ENV === 'production', // true in production (HTTPS)
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', 
+>>>>>>> 7db085937eff678528419e87c9977ce981e471ad
   }
 }));
 
@@ -193,7 +198,11 @@ const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 // EMAIL CONFIGURATION
 // ====================================
 const transporter = nodemailer.createTransport({
+<<<<<<< HEAD
   service: 'smtp.gmail.com',
+=======
+  service: process.env.EMAIL_SERVICE || 'smtp.gmail.com',
+>>>>>>> 7db085937eff678528419e87c9977ce981e471ad
   port: Number(process.env.EMAIL_PORT),
   secure: false,
   auth: {
@@ -263,7 +272,10 @@ const sendOTPEmail = async (email, otp, userName) => {
 };
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 7db085937eff678528419e87c9977ce981e471ad
 // ====================================
 // UTILITY FUNCTIONS
 // ====================================
