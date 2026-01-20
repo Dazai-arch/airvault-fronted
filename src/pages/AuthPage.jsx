@@ -41,15 +41,6 @@ const AuthPage = () => {
   const fileRef = useRef(null);
   const otpRef = useRef([]);
 
-
-  useEffect(() => {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  if (token && page === 'login') {
-    // User is already logged in, redirect to createvaults
-    navigate('/createvaults', { replace: true });
-  }
-}, [page, navigate]);
-
   const handleOtp = (idx, val) => {
     if (val.length <= 1 && /^\d*$/.test(val)) {
       const newOtp = [...otp];

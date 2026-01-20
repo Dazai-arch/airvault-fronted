@@ -17,16 +17,21 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
+const AuthRedirect = () => {
+  const token =
+    localStorage.getItem("token") || sessionStorage.getItem("token");
+
+  return token ? <Navigate to="/createvaults" replace /> : <AuthPage />;
+};
+
+
 function App() {
   return (
     <BrowserRouter>
       <VaultProvider>
         <Routes>
           {/* Public route - no wrapper needed, AuthPage handles its own navigation */}
-          <Route 
-            path="/" 
-            element={<AuthPage />} 
-          />
+          <Route path="/" element={<AuthRedirect />} />
 
           <Route 
             path="/createvaults" 

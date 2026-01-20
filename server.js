@@ -931,27 +931,6 @@ app.get('/api/auth/check-session', (req, res) => {
 });
 
 
-app.use(express.static(path.join(__dirname, 'dist')));
-
-// Handle React routing - serve index.html for all non-API routes
-// Place this AFTER all your API routes but BEFORE error handlers
-app.use((req, res, next) => {
-  // Skip if it's an API route
-  if (req.path.startsWith('/api')) {
-    return next();
-  }
-  
-  // Serve React app for all other routes
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'), (err) => {
-    if (err) {
-      console.error('Error serving index.html:', err);
-      res.status(500).send('Error loading application');
-    }
-  });
-});
-
-
-
 // ERROR HANDLER
 app.use((err, req, res, next) => {
   console.error('Error:', err);
