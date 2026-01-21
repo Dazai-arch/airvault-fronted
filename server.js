@@ -442,7 +442,6 @@ app.post(
       // Try to send email
       try {
         await sendOTPEmail(email, otp, fullName);
-        console.log("✅ Signup OTP email sent successfully to:", email);
       } catch (emailError) {
         console.error("❌ Email sending failed:", emailError.message);
         // Delete the OTP since email failed
@@ -567,7 +566,6 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
     // Try to send email
     try {
       await sendOTPEmail(email, otp, user.fullName);
-      console.log("✅ OTP email sent successfully to:", email);
     } catch (emailError) {
       console.error("❌ Email sending failed:", emailError.message);
       // Delete the OTP since email failed
@@ -670,7 +668,6 @@ app.post("/api/auth/forgot-password", authLimiter, async (req, res) => {
     // Try to send email
     try {
       await sendOTPEmail(email, otp, user.fullName);
-      console.log("✅ Forgot password OTP email sent successfully to:", email);
     } catch (emailError) {
       console.error("❌ Email sending failed:", emailError.message);
       // Delete the OTP since email failed

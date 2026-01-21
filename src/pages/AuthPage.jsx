@@ -99,13 +99,10 @@ const AuthPage = () => {
       })
     });
     
-    console.log('🔵 Response status:', response.status);
     
     const data = await response.json();
-    console.log('🔵 Response data:', data);
     
     if (response.ok) {
-      console.log('✅ Login successful, navigating to OTP page');
       setSuccess(data.message || 'OTP sent successfully');
       setOtpType("login");
       
