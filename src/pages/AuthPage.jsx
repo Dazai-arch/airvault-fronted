@@ -88,7 +88,6 @@ const AuthPage = () => {
   setLoading(true);
   
   try {
-    console.log('🔵 Attempting login for:', form.email);
     
     const response = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
