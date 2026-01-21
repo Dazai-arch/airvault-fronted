@@ -36,7 +36,7 @@ app.use(
         "http://localhost:5173",
         "http://localhost:3000",
       ];
-      
+
       const isAllowed = allowedOrigins.indexOf(origin) !== -1 || 
                         (origin && origin.endsWith('.vercel.app'));
 
@@ -261,7 +261,7 @@ const sendOTPEmail = async (email, otp, userName) => {
                 <div class="message">You recently tried to log in from a new device, browser, or location. In order to complete your login, please use the verification code below.</div>
                 <div class="otp-box">
                   <div class="otp-label">Your Verification Code</div>
-                  <div class="otp-code">123456</div>
+                  <div class="otp-code">${otp}</div>
                   <div class="expiry">⏱ This code expires in 10 minutes</div>
                 </div>
                 <div class="message">Enter this code in the verification screen to continue accessing your secure vault.</div>
