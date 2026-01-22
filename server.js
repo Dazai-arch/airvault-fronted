@@ -196,6 +196,19 @@ const otpSchema = new mongoose.Schema({
 
 const OTP = mongoose.model("OTP", otpSchema);
 
+
+// ADD THIS NEW SCHEMA
+const tempSignupSchema = new mongoose.Schema({
+  email: { type: String, required: true, unique: true },
+  fullName: { type: String, required: true },
+  password: { type: String, required: true },
+  profilePicture: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now, expires: 600 }, // Auto-delete after 10 minutes
+});
+
+const TempSignup = mongoose.model("TempSignup", tempSignupSchema);
+
+
 const auditLogSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -407,6 +420,7 @@ app.get("/api/health", (req, res) => {
 
 // SIGNUP
 // SIGNUP - Update this section
+// SIGNUP
 app.post(
   "/api/auth/signup",
   authLimiter,
@@ -438,6 +452,10 @@ app.post(
       const hashedPassword = await bcrypt.hash(password, 12);
       const otp = generateOTP();
 
+      // Delete any existing temp signup data and OTP for this email
+      await TempSignup.deleteMany({ email });
+      await OTP.deleteMany({ email, type: "signup" });
+
       // Save OTP first
       await OTP.create({ email, otp, type: "signup" });
 
@@ -446,6 +464,7 @@ app.post(
         await sendOTPEmail(email, otp, fullName);
       } catch (emailError) {
         console.error("❌ Email sending failed:", emailError.message);
+        // Delete the OTP since email failed
         await OTP.deleteMany({ email, type: "signup" });
 
         return res.status(503).json({
@@ -455,32 +474,21 @@ app.post(
         });
       }
 
-      // Store temp data in session
-      req.session.tempUserData = {
+      // Store temp signup data in database instead of session
+      await TempSignup.create({
         fullName,
         email,
         password: hashedPassword,
         profilePicture: req.file
           ? `/uploads/profiles/${req.file.filename}`
           : null,
-      };
-
-      // IMPORTANT: Explicitly save the session
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
-          return res.status(500).json({ 
-            message: "Failed to save session data" 
-          });
-        }
-
-        res.status(200).json({
-          message: "OTP sent to your email",
-          email,
-          requiresOTP: true,
-        });
       });
 
+      res.status(200).json({
+        message: "OTP sent to your email",
+        email,
+        requiresOTP: true,
+      });
     } catch (error) {
       console.error("❌ Signup Error:", error);
       res.status(500).json({
@@ -492,22 +500,32 @@ app.post(
   },
 );
 // VERIFY SIGNUP OTP
+// VERIFY SIGNUP OTP
 app.post("/api/auth/verify-signup-otp", authLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
+    }
+
+    // Verify OTP
     const otpRecord = await OTP.findOne({ email, otp, type: "signup" });
 
     if (!otpRecord) {
       return res.status(400).json({ message: "Invalid or expired OTP" });
     }
 
-    const tempUserData = req.session.tempUserData;
-    if (!tempUserData || tempUserData.email !== email) {
-      return res
-        .status(400)
-        .json({ message: "Session expired. Please signup again" });
+    // Get temp signup data from database
+    const tempUserData = await TempSignup.findOne({ email });
+    
+    if (!tempUserData) {
+      return res.status(400).json({ 
+        message: "Signup session expired. Please signup again" 
+      });
     }
 
+    // Create the user
     const newUser = await User.create({
       fullName: tempUserData.fullName,
       email: tempUserData.email,
@@ -517,16 +535,21 @@ app.post("/api/auth/verify-signup-otp", authLimiter, async (req, res) => {
       lastLogin: new Date(),
     });
 
+    // Clean up temp data and OTP
     await OTP.deleteOne({ _id: otpRecord._id });
-    delete req.session.tempUserData;
+    await TempSignup.deleteOne({ _id: tempUserData._id });
+
+    // Create audit log
     await createAuditLog(newUser._id, email, "SIGNUP_SUCCESS", req);
 
+    // Generate JWT token
     const token = jwt.sign(
       { userId: newUser._id, email: newUser.email },
       process.env.JWT_SECRET || "your-secret-key",
       { expiresIn: "7d" },
     );
 
+    // Set session data
     req.session.userId = newUser._id;
     req.session.email = newUser.email;
 
@@ -544,7 +567,10 @@ app.post("/api/auth/verify-signup-otp", authLimiter, async (req, res) => {
     });
   } catch (error) {
     console.error("OTP Verification Error:", error);
-    res.status(500).json({ message: "Server error during verification" });
+    res.status(500).json({ 
+      message: "Server error during verification",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 });
 
@@ -795,6 +821,7 @@ app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
 });
 
 // RESEND OTP
+// RESEND OTP
 app.post("/api/auth/resend-otp", authLimiter, async (req, res) => {
   try {
     const { email, type } = req.body;
@@ -803,16 +830,39 @@ app.post("/api/auth/resend-otp", authLimiter, async (req, res) => {
       return res.status(400).json({ message: "Email and type are required" });
     }
 
-    const user = await User.findOne({ email });
-    if (!user && type !== "signup") {
-      return res.status(404).json({ message: "User not found" });
+    // For signup, check if temp data exists
+    if (type === "signup") {
+      const tempData = await TempSignup.findOne({ email });
+      if (!tempData) {
+        return res.status(400).json({ 
+          message: "Signup session expired. Please signup again" 
+        });
+      }
+    } else {
+      // For login/forgot-password, check if user exists
+      const user = await User.findOne({ email });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
     }
 
+    // Delete old OTP and create new one
     await OTP.deleteMany({ email, type });
 
     const otp = generateOTP();
     await OTP.create({ email, otp, type });
-    await sendOTPEmail(email, otp, user?.fullName || "User");
+
+    // Get user name for email
+    let userName = "User";
+    if (type === "signup") {
+      const tempData = await TempSignup.findOne({ email });
+      userName = tempData?.fullName || "User";
+    } else {
+      const user = await User.findOne({ email });
+      userName = user?.fullName || "User";
+    }
+
+    await sendOTPEmail(email, otp, userName);
 
     res.status(200).json({ message: "New OTP sent to your email" });
   } catch (error) {
