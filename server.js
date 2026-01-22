@@ -87,7 +87,8 @@ app.use(
     saveUninitialized: false,
     store: new MongoStore({
       mongoUrl: process.env.MONGODB_URI,
-      touchAfter: 24 * 3600,
+      touchAfter: 0,
+      ttl: 10 * 60, 
     }),
     cookie: {
       maxAge: 1000 * 60 * 60 * 24 * 7,
@@ -405,6 +406,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // SIGNUP
+// SIGNUP - Update this section
 app.post(
   "/api/auth/signup",
   authLimiter,
@@ -444,7 +446,6 @@ app.post(
         await sendOTPEmail(email, otp, fullName);
       } catch (emailError) {
         console.error("❌ Email sending failed:", emailError.message);
-        // Delete the OTP since email failed
         await OTP.deleteMany({ email, type: "signup" });
 
         return res.status(503).json({
@@ -454,6 +455,7 @@ app.post(
         });
       }
 
+      // Store temp data in session
       req.session.tempUserData = {
         fullName,
         email,
@@ -463,11 +465,22 @@ app.post(
           : null,
       };
 
-      res.status(200).json({
-        message: "OTP sent to your email",
-        email,
-        requiresOTP: true,
+      // IMPORTANT: Explicitly save the session
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ 
+            message: "Failed to save session data" 
+          });
+        }
+
+        res.status(200).json({
+          message: "OTP sent to your email",
+          email,
+          requiresOTP: true,
+        });
       });
+
     } catch (error) {
       console.error("❌ Signup Error:", error);
       res.status(500).json({
