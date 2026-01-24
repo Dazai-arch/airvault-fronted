@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Shield, Lock, Upload, Key, Wifi, QrCode, Link2, FolderOpen, Tag, Search, Eye, Download, Share2, Trash2, AlertCircle, CheckCircle, ArrowRight, Zap, Globe, Smartphone, Database, Award, Clock, Users, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import AuthPage from './AuthPage';
+import { useNavigate } from "react-router-dom";
 
 const AirVaultHomepage = () => {
   const [scrollY, setScrollY] = useState(0);
@@ -24,8 +25,10 @@ const AirVaultHomepage = () => {
   }, []);
 
   // Navigate to auth page
+  const navigate = useNavigate();
+
   const navigateToAuth = () => {
-    window.location.href = '/auth';
+    navigate("/auth");
   };
 
   return (
