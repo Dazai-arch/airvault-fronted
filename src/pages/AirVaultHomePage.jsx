@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Lock, Upload, Key, Wifi, QrCode, Link2, FolderOpen, Tag, Search, Eye, Download, Share2, Trash2, AlertCircle, CheckCircle, ArrowRight, Zap, Globe, Smartphone, Database, Award, Clock, Users, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import AuthPage from './AuthPage';
 
 const AirVaultHomepage = () => {
   const [scrollY, setScrollY] = useState(0);
