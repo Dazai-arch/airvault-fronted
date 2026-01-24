@@ -4,6 +4,8 @@ import VaultSelector from "./pages/VaultSelector";
 import VaultDashboard from "./pages/VaultDashboard";
 import { VaultProvider } from "./context/VaultContext";
 import AuthPage from "./pages/AuthPage";
+import AirVaultHomepage from "./pages/AirVaultHomePage";
+import { ThemeProvider } from './context/ThemeContext';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -19,13 +21,18 @@ const ProtectedRoute = ({ children }) => {
 
 function App() {
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <VaultProvider>
         <Routes>
           {/* Public route - no wrapper needed, AuthPage handles its own navigation */}
+          <Route path="/" element={<AirVaultHomepage />} />
+
           <Route 
-            path="/" 
-            element={<AuthPage />} 
+            path="/auth" 
+            element={
+                <AuthPage />
+            } 
           />
 
           <Route 
@@ -71,6 +78,7 @@ function App() {
         </Routes>
       </VaultProvider>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }
 
