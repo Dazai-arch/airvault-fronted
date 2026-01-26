@@ -664,7 +664,7 @@ app.post("/api/auth/verify-login-otp", authLimiter, async (req, res) => {
     req.session.userId = user._id;
     req.session.email = user.email;
 
-    const redirectTo = user.vaultCreated ? "/dashboard" : "/createvaults";
+    const redirectTo = "/createvaults";
 
     res.status(200).json({
       message: "Login successful",

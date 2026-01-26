@@ -80,7 +80,7 @@ const AirVaultHomepage = () => {
       </div>
 
       {/* Navigation - Fixed with proper z-index */}
-      <nav className={`fixed top-0 left-0 right-0 ${isDark ? 'bg-slate-900/95 border-cyan-500/20' : 'bg-white/95 border-cyan-500/30'} backdrop-blur-2xl border-b z-50 shadow-lg ${isDark ? 'shadow-cyan-500/5' : 'shadow-cyan-500/10'} transition-colors duration-500`}>
+      <nav className={`fixed top-0 left-0 right-4 ${isDark ? 'bg-slate-900/95 border-cyan-500/20' : 'bg-white/95 border-cyan-500/30'} backdrop-blur-2xl border-b z-50 shadow-lg ${isDark ? 'shadow-cyan-500/5' : 'shadow-cyan-500/10'} transition-colors duration-500`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-500/50 transition-all duration-500 group-hover:rotate-6 group-hover:scale-110">
@@ -328,8 +328,8 @@ const AirVaultHomepage = () => {
                     <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{step.desc}</div>
                   </div>
                   {idx < 3 && (
-                    <div className="absolute top-1/2 -right-2 -translate-y-1/2 hidden lg:block">
-                      <ArrowRight className="text-cyan-400 animate-pulse-slow" />
+                    <div className="hidden lg:block absolute top-1/2 -right-5 -translate-y-1/2 z-10">
+                      <ArrowRight className="text-cyan-400 w-6 h-6" />
                     </div>
                   )}
                 </div>
@@ -536,6 +536,7 @@ const AirVaultHomepage = () => {
       </footer>
 
       <style jsx>{`
+
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-20px); }

@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useVault } from "../context/VaultContext";
 import { useNavigate } from "react-router-dom";
-import { Shield, Lock, LockOpen, Plus, ArrowLeft, Trash2, X, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Shield, Lock, LockOpen, Plus, ArrowLeft, Trash2, X, AlertTriangle, Eye, EyeOff, Moon, Sun } from "lucide-react";
 import Toast from "../components/layout/Toast";
+import { useTheme } from '../context/ThemeContext';
 
 const API_URL = import.meta.env.VITE_API_URL ||
   (import.meta.env.DEV ? "http://localhost:5000/api" : "/api");
@@ -10,10 +11,11 @@ const API_URL = import.meta.env.VITE_API_URL ||
 const VaultSelector = () => {
   const { setActiveVault } = useVault();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const [vaults, setVaults] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [deleteModal, setDeleteModal] = useState(null); // { vault, step: 'confirm' | 'password' }
-  const [unlockModal, setUnlockModal] = useState(null); // { vault }
+  const [deleteModal, setDeleteModal] = useState(null);
+  const [unlockModal, setUnlockModal] = useState(null);
   const [deleteInput, setDeleteInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [unlockPassword, setUnlockPassword] = useState("");
@@ -24,7 +26,6 @@ const VaultSelector = () => {
     setToast({ message, type });
   };
 
-  // Fetch vaults from backend
   useEffect(() => {
     fetchVaults();
   }, []);
@@ -90,7 +91,6 @@ const VaultSelector = () => {
         return;
       }
 
-      // Password correct, open vault
       setActiveVault(unlockModal.vault);
       setUnlockModal(null);
       setUnlockPassword("");
@@ -166,7 +166,7 @@ const VaultSelector = () => {
       if (response.ok) {
         showToast(`Vault "${deleteModal.vault.name}" deleted successfully`, "success");
         setDeleteModal(null);
-        fetchVaults(); // Refresh vault list
+        fetchVaults();
       } else {
         showToast(data.message || "Failed to delete vault", "error");
       }
@@ -183,14 +183,14 @@ const VaultSelector = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading vaults...</div>
+      <div className={`min-h-screen ${isDark ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100'} flex items-center justify-center transition-colors duration-500`}>
+        <div className={`${isDark ? 'text-white' : 'text-gray-900'} text-xl`}>Loading vaults...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+    <div className={`min-h-screen ${isDark ? 'bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900' : 'bg-gradient-to-br from-gray-50 via-white to-gray-100'} relative overflow-hidden transition-colors duration-500`}>
       {/* Toast Notification */}
       {toast && (
         <Toast
@@ -200,11 +200,24 @@ const VaultSelector = () => {
         />
       )}
 
+      {/* Theme Toggle */}
+      <button
+        onClick={toggleTheme}
+        className={`fixed top-6 right-6 p-3 rounded-xl ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-white hover:bg-gray-100'} ${isDark ? 'border-slate-700' : 'border-gray-200'} border transition-all duration-300 shadow-lg z-50 group`}
+        aria-label="Toggle theme"
+      >
+        {isDark ? (
+          <Sun className="w-5 h-5 text-yellow-400 group-hover:rotate-90 transition-transform duration-500" />
+        ) : (
+          <Moon className="w-5 h-5 text-indigo-600 group-hover:-rotate-12 transition-transform duration-500" />
+        )}
+      </button>
+
       {/* Background Animation */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
-        <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl animate-pulse" style={{animationDelay: '0.5s'}}></div>
+        <div className={`absolute top-1/4 -left-1/4 w-96 h-96 ${isDark ? 'bg-cyan-500/10' : 'bg-cyan-500/5'} rounded-full blur-3xl animate-pulse`}></div>
+        <div className={`absolute bottom-1/4 -right-1/4 w-96 h-96 ${isDark ? 'bg-blue-600/10' : 'bg-blue-600/5'} rounded-full blur-3xl animate-pulse`} style={{animationDelay: '1s'}}></div>
+        <div className={`absolute top-1/2 left-1/2 w-96 h-96 ${isDark ? 'bg-indigo-500/5' : 'bg-indigo-500/3'} rounded-full blur-3xl animate-pulse`} style={{animationDelay: '0.5s'}}></div>
       </div>
 
       <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
@@ -212,7 +225,7 @@ const VaultSelector = () => {
         <div className="mb-8 sm:mb-10">
           <button
             onClick={() => navigate("/createvaults")}
-            className="inline-flex items-center gap-2 text-slate-400 hover:text-white transition-colors duration-200 mb-6 group"
+            className={`inline-flex items-center gap-2 ${isDark ? 'text-slate-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'} transition-colors duration-200 mb-6 group`}
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform duration-200" />
             <span className="text-sm">Back</span>
@@ -220,18 +233,18 @@ const VaultSelector = () => {
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2 flex items-center gap-3">
-                <div className="p-2 sm:p-3 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/20 border border-blue-500/30">
-                  <Shield className="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" />
+              <h1 className={`text-3xl sm:text-4xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2 flex items-center gap-3`}>
+                <div className={`p-2 sm:p-3 rounded-xl ${isDark ? 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-cyan-500/30' : 'bg-gradient-to-br from-cyan-500/10 to-blue-600/10 border-cyan-500/40'} border transition-colors duration-300`}>
+                  <Shield className={`w-6 h-6 sm:w-8 sm:h-8 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />
                 </div>
                 Your Vaults
               </h1>
-              <p className="text-slate-400 text-sm sm:text-base">Select a vault to access your encrypted files</p>
+              <p className={`${isDark ? 'text-slate-400' : 'text-gray-600'} text-sm sm:text-base`}>Select a vault to access your encrypted files</p>
             </div>
 
             <button
               onClick={() => navigate("/createvaults")}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white font-semibold shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/40 transition-all duration-300 hover:scale-105"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-xl hover:shadow-cyan-500/40 transition-all duration-300 hover:scale-105"
             >
               <Plus className="w-5 h-5" />
               <span>New Vault</span>
@@ -242,14 +255,14 @@ const VaultSelector = () => {
         {/* Vaults Grid */}
         {vaults.length === 0 ? (
           <div className="text-center py-16 sm:py-20">
-            <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-800/50 border border-slate-700/50 mb-6">
-              <Shield className="w-8 h-8 sm:w-10 sm:h-10 text-slate-400" />
+            <div className={`inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-gray-100 border-gray-200'} border mb-6 transition-colors duration-300`}>
+              <Shield className={`w-8 h-8 sm:w-10 sm:h-10 ${isDark ? 'text-slate-400' : 'text-gray-400'}`} />
             </div>
-            <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2">No vaults yet</h3>
-            <p className="text-slate-400 mb-6 text-sm sm:text-base">Create your first vault to get started</p>
+            <h3 className={`text-xl sm:text-2xl font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>No vaults yet</h3>
+            <p className={`${isDark ? 'text-slate-400' : 'text-gray-600'} mb-6 text-sm sm:text-base`}>Create your first vault to get started</p>
             <button
               onClick={() => navigate("/createvaults")}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 text-white font-semibold shadow-lg shadow-blue-500/25 transition-all duration-300"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-cyan-500/25 transition-all duration-300"
             >
               <Plus className="w-5 h-5" />
               Create Vault
@@ -260,39 +273,43 @@ const VaultSelector = () => {
             {vaults.map((vault) => (
               <div
                 key={vault.id}
-                className="group relative bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-5 sm:p-6 cursor-pointer hover:border-blue-500/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/20 overflow-hidden"
+                className={`group relative ${isDark ? 'bg-slate-800/50 border-slate-700/50 hover:border-cyan-500/50' : 'bg-white/80 border-gray-200 hover:border-cyan-500/50'} backdrop-blur-xl border rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 ${isDark ? 'hover:shadow-2xl hover:shadow-cyan-500/20' : 'hover:shadow-2xl hover:shadow-cyan-500/30'} overflow-hidden`}
               >
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-transparent to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                <div className={`absolute inset-0 ${isDark ? 'bg-gradient-to-br from-cyan-500/0 via-transparent to-blue-600/0' : 'bg-gradient-to-br from-cyan-500/0 via-transparent to-blue-600/0'} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
                 
                 <div className="relative" onClick={() => openVault(vault)}>
                   <div className="flex items-start justify-between mb-4">
-                    <div className="p-3 rounded-xl bg-slate-700/50 border border-slate-600/50 group-hover:scale-110 transition-transform duration-300">
+                    <div className={`p-3 rounded-xl ${isDark ? 'bg-slate-700/50 border-slate-600/50' : 'bg-gray-100 border-gray-200'} border group-hover:scale-110 transition-transform duration-300`}>
                       {vault.hasPassword ? (
-                        <Lock className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400" />
+                        <Lock className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />
                       ) : (
-                        <LockOpen className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
+                        <LockOpen className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? 'text-slate-400' : 'text-gray-400'}`} />
                       )}
                     </div>
                     
                     <div className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
                       vault.hasPassword
-                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
-                        : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                        ? isDark 
+                          ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
+                          : 'bg-cyan-50 text-cyan-700 border border-cyan-200'
+                        : isDark
+                          ? 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                          : 'bg-gray-100 text-gray-600 border border-gray-200'
                     }`}>
                       {vault.hasPassword ? "Protected" : "No Password"}
                     </div>
                   </div>
 
-                  <h3 className="text-lg sm:text-xl font-semibold text-white mb-2 truncate pr-8">
+                  <h3 className={`text-lg sm:text-xl font-semibold ${isDark ? 'text-white' : 'text-gray-900'} mb-2 truncate pr-8`}>
                     {vault.name}
                   </h3>
                   
-                  <div className="flex items-center justify-between text-xs sm:text-sm text-slate-400">
+                  <div className={`flex items-center justify-between text-xs sm:text-sm ${isDark ? 'text-slate-400' : 'text-gray-600'}`}>
                     <span className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                       {vault.fileCount || 0} files
                     </span>
-                    <span className="text-xs text-slate-500">
+                    <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-gray-400'}`}>
                       {new Date(vault.createdAt).toLocaleDateString()}
                     </span>
                   </div>
@@ -301,7 +318,7 @@ const VaultSelector = () => {
                 {/* Delete Button */}
                 <button
                   onClick={(e) => handleDeleteClick(e, vault)}
-                  className="absolute top-4 right-4 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 opacity-0 group-hover:opacity-100 hover:bg-red-500/20 transition-all duration-200 z-10"
+                  className={`absolute top-4 right-4 p-2 rounded-lg ${isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'} border text-red-400 opacity-0 group-hover:opacity-100 ${isDark ? 'hover:bg-red-500/20' : 'hover:bg-red-100'} transition-all duration-200 z-10`}
                   title="Delete vault"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -315,50 +332,50 @@ const VaultSelector = () => {
       {/* Unlock Vault Modal */}
       {unlockModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
-          <div className="bg-slate-800 rounded-2xl p-6 sm:p-8 max-w-md w-full border border-slate-700 shadow-2xl relative">
+          <div className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'} rounded-2xl p-6 sm:p-8 max-w-md w-full border shadow-2xl relative transition-colors duration-300`}>
             <button
               onClick={() => {
                 setUnlockModal(null);
                 setUnlockPassword("");
                 setShowUnlockPassword(false);
               }}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+              className={`absolute top-4 right-4 ${isDark ? 'text-slate-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full mb-4">
+              <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-full mb-4">
                 <Lock className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">
+              <h2 className={`text-xl sm:text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>
                 Unlock Vault
               </h2>
-              <p className="text-slate-400 text-sm">
-                Enter password for <span className="text-white font-semibold">{unlockModal.vault.name}</span>
+              <p className={`${isDark ? 'text-slate-400' : 'text-gray-600'} text-sm`}>
+                Enter password for <span className={`${isDark ? 'text-white' : 'text-gray-900'} font-semibold`}>{unlockModal.vault.name}</span>
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-gray-700'} mb-2`}>
                   Vault Password
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 ${isDark ? 'text-slate-400' : 'text-gray-400'}`} />
                   <input
                     type={showUnlockPassword ? "text" : "password"}
                     value={unlockPassword}
                     onChange={(e) => setUnlockPassword(e.target.value)}
                     placeholder="Enter vault password"
-                    className="w-full pl-12 pr-12 py-3 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={`w-full pl-12 pr-12 py-3 ${isDark ? 'bg-slate-700/50 border-slate-600/50 text-white placeholder-slate-400' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'} border rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-colors duration-300`}
                     autoFocus
                     onKeyPress={(e) => e.key === 'Enter' && handleUnlockSubmit()}
                   />
                   <button
                     type="button"
                     onClick={() => setShowUnlockPassword(!showUnlockPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors"
+                    className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDark ? 'text-slate-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}
                   >
                     {showUnlockPassword ? (
                       <EyeOff className="w-5 h-5" />
@@ -376,13 +393,13 @@ const VaultSelector = () => {
                     setUnlockPassword("");
                     setShowUnlockPassword(false);
                   }}
-                  className="flex-1 px-4 py-3 rounded-xl bg-slate-700 text-white font-semibold hover:bg-slate-600 transition-all"
+                  className={`flex-1 px-4 py-3 rounded-xl ${isDark ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'} font-semibold transition-all`}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleUnlockSubmit}
-                  className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-600 text-white font-semibold hover:from-blue-600 hover:to-cyan-700 transition-all flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white font-semibold hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 transition-all flex items-center justify-center gap-2"
                 >
                   <LockOpen className="w-5 h-5" />
                   Unlock
@@ -396,22 +413,22 @@ const VaultSelector = () => {
       {/* Delete Confirmation Modal */}
       {deleteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
-          <div className="bg-slate-800 rounded-2xl p-6 sm:p-8 max-w-md w-full border border-slate-700 shadow-2xl relative">
+          <div className={`${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-gray-200'} rounded-2xl p-6 sm:p-8 max-w-md w-full border shadow-2xl relative transition-colors duration-300`}>
             <button
               onClick={closeDeleteModal}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors"
+              className={`absolute top-4 right-4 ${isDark ? 'text-slate-400 hover:text-white' : 'text-gray-400 hover:text-gray-900'} transition-colors`}
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-red-500/10 border border-red-500/20 rounded-full mb-4">
+              <div className={`inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 ${isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'} border rounded-full mb-4`}>
                 <AlertTriangle className="w-7 h-7 sm:w-8 sm:h-8 text-red-400" />
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">
+              <h2 className={`text-xl sm:text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'} mb-2`}>
                 {deleteModal.step === 'confirm' ? 'Delete Vault?' : 'Verify Password'}
               </h2>
-              <p className="text-slate-400 text-sm">
+              <p className={`${isDark ? 'text-slate-400' : 'text-gray-600'} text-sm`}>
                 {deleteModal.step === 'confirm' 
                   ? `Are you sure you want to delete "${deleteModal.vault.name}"? This action cannot be undone.`
                   : 'Enter your vault password to confirm deletion'
@@ -423,7 +440,7 @@ const VaultSelector = () => {
               {deleteModal.step === 'confirm' ? (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-gray-700'} mb-2`}>
                       Type "delete" to confirm
                     </label>
                     <input
@@ -431,7 +448,7 @@ const VaultSelector = () => {
                       value={deleteInput}
                       onChange={(e) => setDeleteInput(e.target.value)}
                       placeholder="delete"
-                      className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                      className={`w-full px-4 py-3 ${isDark ? 'bg-slate-700/50 border-slate-600/50 text-white placeholder-slate-400' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'} border rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-300`}
                       autoFocus
                     />
                   </div>
@@ -439,7 +456,7 @@ const VaultSelector = () => {
                   <div className="flex gap-3">
                     <button
                       onClick={closeDeleteModal}
-                      className="flex-1 px-4 py-3 rounded-xl bg-slate-700 text-white font-semibold hover:bg-slate-600 transition-all"
+                      className={`flex-1 px-4 py-3 rounded-xl ${isDark ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'} font-semibold transition-all`}
                     >
                       Cancel
                     </button>
@@ -455,7 +472,7 @@ const VaultSelector = () => {
               ) : (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                    <label className={`block text-sm font-medium ${isDark ? 'text-slate-300' : 'text-gray-700'} mb-2`}>
                       Vault Password
                     </label>
                     <input
@@ -463,7 +480,7 @@ const VaultSelector = () => {
                       value={passwordInput}
                       onChange={(e) => setPasswordInput(e.target.value)}
                       placeholder="Enter vault password"
-                      className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500"
+                      className={`w-full px-4 py-3 ${isDark ? 'bg-slate-700/50 border-slate-600/50 text-white placeholder-slate-400' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-400'} border rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-300`}
                       autoFocus
                       onKeyPress={(e) => e.key === 'Enter' && handlePasswordConfirm()}
                     />
@@ -472,7 +489,7 @@ const VaultSelector = () => {
                   <div className="flex gap-3">
                     <button
                       onClick={() => setDeleteModal({ ...deleteModal, step: 'confirm' })}
-                      className="flex-1 px-4 py-3 rounded-xl bg-slate-700 text-white font-semibold hover:bg-slate-600 transition-all"
+                      className={`flex-1 px-4 py-3 rounded-xl ${isDark ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'} font-semibold transition-all`}
                     >
                       Back
                     </button>
