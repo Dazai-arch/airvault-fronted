@@ -80,7 +80,8 @@ const AirVaultHomepage = () => {
       </div>
 
       {/* Navigation - Fixed with proper z-index */}
-      <nav className={`fixed top-0 left-0 right-4 ${isDark ? 'bg-slate-900/95 border-cyan-500/20' : 'bg-white/95 border-cyan-500/30'} backdrop-blur-2xl border-b z-50 shadow-lg ${isDark ? 'shadow-cyan-500/5' : 'shadow-cyan-500/10'} transition-colors duration-500`}>
+      <header className="fixed top-0 left-0 right-0 lg:right-4 z-50">
+      <nav className={`relative ${isDark ? 'bg-slate-900/95 border-cyan-500/20' : 'bg-white/95 border-cyan-500/30'} backdrop-blur-2xl border-b shadow-lg ${isDark ? 'shadow-cyan-500/5' : 'shadow-cyan-500/10'} transition-colors duration-500`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer">
             <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-500/50 transition-all duration-500 group-hover:rotate-6 group-hover:scale-110">
@@ -126,6 +127,7 @@ const AirVaultHomepage = () => {
           </button>
         </div>
       </nav>
+      </header>
 
       {/* Hero Section */}
       <section className="relative pt-32 pb-20 px-6 overflow-hidden">

@@ -196,8 +196,6 @@ const otpSchema = new mongoose.Schema({
 
 const OTP = mongoose.model("OTP", otpSchema);
 
-
-// ADD THIS NEW SCHEMA
 const tempSignupSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   fullName: { type: String, required: true },
@@ -1162,7 +1160,6 @@ app.put("/api/vaults/:vaultId", authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE VAULT (Soft Delete)
 app.delete("/api/vaults/:vaultId", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
@@ -1177,7 +1174,6 @@ app.delete("/api/vaults/:vaultId", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Vault not found" });
     }
 
-    // Soft delete
     vault.isActive = false;
     await vault.save();
 
@@ -1190,7 +1186,7 @@ app.delete("/api/vaults/:vaultId", authenticateToken, async (req, res) => {
   }
 });
 
-// UPDATE VAULT STATS (Called when files are added/removed)
+// UPDATE VAULT STATS 
 app.patch("/api/vaults/:vaultId/stats", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
@@ -1263,6 +1259,7 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ message: "API route not found" });
 });
+
 // START SERVER
 app.listen(PORT, () => {
   console.log(`AirVault Server Running on Port ${PORT}`);
