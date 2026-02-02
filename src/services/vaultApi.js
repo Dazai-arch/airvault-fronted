@@ -270,7 +270,7 @@ validateToken: async () => {
     const token = getAuthToken();
     if (!token) return null; // Return null instead of false
     
-    const response = await fetch(`${API_BASE_URL}/validate-token`, {
+    const response = await fetch(`${API_BASE_URL}/auth/validate-token`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
