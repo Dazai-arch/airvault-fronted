@@ -406,7 +406,7 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-app.get('/validate-token', authenticateToken, async (req, res) => {
+app.get('/api/validate-token', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password');
     
