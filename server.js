@@ -228,28 +228,6 @@ const auditLogSchema = new mongoose.Schema({
 const AuditLog = mongoose.model("AuditLog", auditLogSchema);
 
 
-app.get('/validate-token', authenticateToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('-password');
-    
-    if (!user) {
-      return res.status(404).json({ valid: false, message: 'User not found' });
-    }
-    
-    res.json({ 
-      valid: true, 
-      user: {
-        id: user._id,
-        email: user.email,
-        fullName: user.fullName
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ valid: false, message: 'Server error' });
-  }
-});
-
-
 // ====================================
 // EMAIL CONFIGURATION
 // ====================================
@@ -426,6 +404,28 @@ const authenticateToken = (req, res, next) => {
     },
   );
 };
+
+
+app.get('/validate-token', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ valid: false, message: 'User not found' });
+    }
+    
+    res.json({ 
+      valid: true, 
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ valid: false, message: 'Server error' });
+  }
+});
 
 // ====================================
 // API ROUTES
