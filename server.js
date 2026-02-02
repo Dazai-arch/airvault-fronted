@@ -406,27 +406,6 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-app.get('/api/validate-token', authenticateToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('-password');
-    
-    if (!user) {
-      return res.status(404).json({ valid: false, message: 'User not found' });
-    }
-    
-    res.json({ 
-      valid: true, 
-      user: {
-        id: user._id,
-        email: user.email,
-        fullName: user.fullName
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ valid: false, message: 'Server error' });
-  }
-});
-
 // ====================================
 // API ROUTES
 // ====================================
@@ -439,8 +418,33 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// SIGNUP
-// SIGNUP - Update this section
+
+app.get('/api/auth/validate-token', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ valid: false, message: 'User not found' });
+    }
+    
+    res.json({ 
+      valid: true, 
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        profilePicture: user.profilePicture,
+        vaultCreated: user.vaultCreated
+      }
+    });
+  } catch (error) {
+    console.error('Token validation error:', error);
+    res.status(500).json({ 
+      valid: false, 
+      message: 'Server error during token validation' 
+    });
+  }
+});
 // SIGNUP
 app.post(
   "/api/auth/signup",
