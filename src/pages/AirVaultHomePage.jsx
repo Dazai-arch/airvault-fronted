@@ -162,7 +162,7 @@ const AirVaultHomepage = () => {
             </h1>
             
             <p className={`text-xl ${isDark ? 'text-gray-400' : 'text-gray-600'} max-w-3xl mx-auto mb-10 leading-relaxed animate-fade-in`} style={{ animationDelay: '0.4s' }}>
-              Create unlimited isolated vaults with military-grade encryption. Organize your documents, credentials, and sensitive files with enterprise security and instant sharing capabilities.
+              Create unlimited isolated vaults with military-grade encryption. Organize your documents and sensitive files with enterprise security and instant sharing capabilities.
             </p>
             
             <div className="flex gap-4 justify-center animate-fade-in" style={{ animationDelay: '0.6s' }}>
