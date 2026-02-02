@@ -209,7 +209,7 @@ const AuthPage = () => {
         setSuccess(data.message);
         
         setTimeout(() => {
-          navigate(data.redirectTo || "/maindashboard", { replace: true });
+          navigate(data.redirectTo || "/vaults", { replace: true });
         }, 100);
         
       } else {

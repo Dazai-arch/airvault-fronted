@@ -334,7 +334,7 @@ const MainDashboard = () => {
               <div className={`p-3 rounded-xl ${isDark ? 'bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border-cyan-500/30' : 'bg-gradient-to-br from-cyan-500/10 to-blue-600/10 border-cyan-500/40'} border`}>
                 <Activity className={`w-6 h-6 sm:w-8 sm:h-8 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />
               </div>
-              Analytics Dashboard
+              Main Dashboard
             </h1>
             <p className={`${isDark ? 'text-gray-400' : 'text-gray-600'} text-sm sm:text-base`}>
               Comprehensive insights and real-time monitoring of your vault ecosystem
