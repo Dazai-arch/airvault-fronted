@@ -227,6 +227,20 @@ const auditLogSchema = new mongoose.Schema({
 
 const AuditLog = mongoose.model("AuditLog", auditLogSchema);
 
+
+// auth.routes.js
+router.get('/validate-token', authenticateToken, (req, res) => {
+  res.json({ 
+    valid: true, 
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      fullName: req.user.fullName
+    }
+  });
+});
+
+
 // ====================================
 // EMAIL CONFIGURATION
 // ====================================

@@ -9,27 +9,47 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 const getAuthToken = () => {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
   if (!token) {
-    console.warn('⚠️ No authentication token found in localStorage');
-    console.log('💡 Please log in to access this feature');
+    console.warn('⚠️ No authentication token found');
+    console.log('💡 Redirecting to login page...');
+    window.location.href = '/login';
+    return null;
   }
   return token;
 };
 
+// Helper function to clear auth data and redirect to login
+const handleAuthError = (errorMessage = 'Session expired. Please login again.') => {
+  console.error('🔒 Authentication Error:', errorMessage);
+  
+  // Clear all auth data
+  localStorage.removeItem('token');
+  sessionStorage.removeItem('token');
+  localStorage.removeItem('user');
+  
+  // Redirect to login page
+  window.location.href = '/login';
+};
+
 // Helper function to handle API responses
 const handleResponse = async (response) => {
+  // Handle authentication errors (401 Unauthorized, 403 Forbidden)
+  if (response.status === 401 || response.status === 403) {
+    const data = await response.json().catch(() => ({ message: 'Authentication failed' }));
+    
+    console.error('🔒 Authentication failed - Token expired or invalid');
+    console.log('Status:', response.status);
+    console.log('Message:', data.message);
+    
+    // Clear auth and redirect to login
+    handleAuthError(data.message);
+    
+    // Throw error to stop further execution
+    throw new Error(data.message || 'Session expired');
+  }
+  
   const data = await response.json();
   
   if (!response.ok) {
-    // Special handling for 403 Forbidden
-    if (response.status === 403) {
-      console.error('🔒 Access Forbidden - Token issue detected');
-      console.log('Current token:', localStorage.getItem('token')?.substring(0, 20) + '...');
-      console.log('💡 Try logging out and logging back in');
-      
-      // Optionally redirect to login
-      // window.location.href = '/login';
-    }
-    
     throw new Error(data.message || 'Something went wrong');
   }
   
@@ -44,11 +64,14 @@ export const vaultApi = {
   // Fetch all vaults for the authenticated user
   getAllVaults: async () => {
     try {
+      const token = getAuthToken();
+      if (!token) return; // Will redirect to login
+      
       const response = await fetch(`${API_BASE_URL}/vaults`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
       });
@@ -63,11 +86,14 @@ export const vaultApi = {
   // Fetch a single vault by ID
   getVaultById: async (vaultId) => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/vaults/${vaultId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
       });
@@ -82,11 +108,14 @@ export const vaultApi = {
   // Create a new vault
   createVault: async (vaultData) => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/vaults/create`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
         body: JSON.stringify(vaultData),
@@ -102,11 +131,14 @@ export const vaultApi = {
   // Verify vault password
   verifyVaultPassword: async (vaultId, password) => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/vaults/${vaultId}/verify-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
         body: JSON.stringify({ password }),
@@ -122,11 +154,14 @@ export const vaultApi = {
   // Update vault
   updateVault: async (vaultId, updateData) => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/vaults/${vaultId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
         body: JSON.stringify(updateData),
@@ -142,11 +177,14 @@ export const vaultApi = {
   // Delete vault
   deleteVault: async (vaultId) => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/vaults/${vaultId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
       });
@@ -161,11 +199,14 @@ export const vaultApi = {
   // Update vault stats (file count and total size)
   updateVaultStats: async (vaultId, stats) => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/vaults/${vaultId}/stats`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
         body: JSON.stringify(stats),
@@ -181,11 +222,14 @@ export const vaultApi = {
   // Get user profile
   getUserProfile: async () => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/user/profile`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
       });
@@ -200,11 +244,14 @@ export const vaultApi = {
   // Get audit logs
   getAuditLogs: async () => {
     try {
+      const token = getAuthToken();
+      if (!token) return;
+      
       const response = await fetch(`${API_BASE_URL}/user/audit-logs`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getAuthToken()}`,
+          'Authorization': `Bearer ${token}`,
         },
         credentials: 'include',
       });
@@ -215,6 +262,38 @@ export const vaultApi = {
       throw error;
     }
   },
+
+  // Validate token (optional - for manual checks)
+  validateToken: async () => {
+    try {
+      const token = getAuthToken();
+      if (!token) return false;
+      
+      const response = await fetch(`${API_BASE_URL}/auth/validate-token`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+      });
+      
+      if (response.status === 401 || response.status === 403) {
+        handleAuthError('Token validation failed');
+        return false;
+      }
+      
+      return response.ok;
+    } catch (error) {
+      console.error('Error validating token:', error);
+      return false;
+    }
+  },
+
+  // Manual logout function
+  logout: () => {
+    handleAuthError('Logging out...');
+  }
 };
 
 export default vaultApi;

@@ -44,33 +44,39 @@ const MainDashboard = () => {
   }, []);
 
   const fetchVaults = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await vaultApi.getAllVaults();
-      
-      // Transform backend data to match frontend format
-      const transformedVaults = response.vaults.map(vault => ({
-        id: vault.id,
-        name: vault.name,
-        description: vault.description,
-        hasPassword: vault.hasPassword,
-        passwordHint: vault.passwordHint,
-        createdAt: vault.createdAt,
-        lastAccessed: vault.lastAccessed,
-        fileCount: vault.fileCount,
-        files: [], // Files will be populated separately if needed
-        storageUsed: Math.round(vault.totalSize / (1024 * 1024)), // Convert bytes to MB
-      }));
-      
-      setVaults(transformedVaults);
-    } catch (err) {
-      console.error('Error fetching vaults:', err);
+  try {
+    setLoading(true);
+    setError(null);
+    const response = await vaultApi.getAllVaults();
+    
+    // Check if response exists (it won't if redirected to login)
+    if (!response) return;
+    
+    const transformedVaults = response.vaults.map(vault => ({
+      id: vault.id,
+      name: vault.name,
+      description: vault.description,
+      hasPassword: vault.hasPassword,
+      passwordHint: vault.passwordHint,
+      createdAt: vault.createdAt,
+      lastAccessed: vault.lastAccessed,
+      fileCount: vault.fileCount,
+      files: [],
+      storageUsed: Math.round(vault.totalSize / (1024 * 1024)),
+    }));
+    
+    setVaults(transformedVaults);
+  } catch (err) {
+    console.error('Error fetching vaults:', err);
+    
+    // Don't show error if it's an auth error (user will be redirected)
+    if (!err.message.includes('Session expired') && !err.message.includes('Authentication')) {
       setError(err.message || 'Failed to load vaults');
-    } finally {
-      setLoading(false);
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleRefresh = async () => {
     setRefreshing(true);
