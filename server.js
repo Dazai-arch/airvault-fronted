@@ -561,7 +561,7 @@ app.post("/api/auth/verify-signup-otp", authLimiter, async (req, res) => {
         profilePicture: newUser.profilePicture,
         vaultCreated: newUser.vaultCreated,
       },
-      redirectTo: "/createvaults",
+      redirectTo: "/maindashboard",
     });
   } catch (error) {
     console.error("OTP Verification Error:", error);
@@ -662,7 +662,7 @@ app.post("/api/auth/verify-login-otp", authLimiter, async (req, res) => {
     req.session.userId = user._id;
     req.session.email = user.email;
 
-    const redirectTo = "/createvaults";
+    const redirectTo = "/maindashboard";
 
     res.status(200).json({
       message: "Login successful",

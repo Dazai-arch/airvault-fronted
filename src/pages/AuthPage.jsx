@@ -48,7 +48,7 @@ const AuthPage = () => {
   useEffect(() => {
     const token = localStorage.getItem('token') || sessionStorage.getItem('token');
     if (token && page === 'login') {
-      navigate('/createvaults', { replace: true });
+      navigate('/maindashboard', { replace: true });
     }
   }, [page, navigate]);
 
@@ -209,7 +209,7 @@ const AuthPage = () => {
         setSuccess(data.message);
         
         setTimeout(() => {
-          navigate(data.redirectTo || "/createvaults", { replace: true });
+          navigate(data.redirectTo || "/maindashboard", { replace: true });
         }, 100);
         
       } else {

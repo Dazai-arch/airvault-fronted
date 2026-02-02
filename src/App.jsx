@@ -6,10 +6,10 @@ import { VaultProvider } from "./context/VaultContext";
 import AuthPage from "./pages/AuthPage";
 import AirVaultHomepage from "./pages/AirVaultHomePage";
 import { ThemeProvider } from './context/ThemeContext';
+import MainDashboard from "./pages/MainDashboard";
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
-  // Check BOTH localStorage AND sessionStorage for token
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
 
   if (!token) {
@@ -25,7 +25,6 @@ function App() {
     <BrowserRouter>
       <VaultProvider>
         <Routes>
-          {/* Public route - no wrapper needed, AuthPage handles its own navigation */}
           <Route path="/" element={<AirVaultHomepage />} />
 
           <Route 
@@ -34,6 +33,8 @@ function App() {
                 <AuthPage />
             } 
           />
+
+          <Route path="/maindashboard" element={<ProtectedRoute><MainDashboard /> </ProtectedRoute>} />
 
           <Route 
             path="/createvaults" 

@@ -56,10 +56,9 @@ const CreateVault = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        console.error("❌ Vault creation failed:", data.message);
+        console.error("Vault creation failed:", data.message);
         showToast(data.message || "Failed to create vault", "error");
 
-        // Close modal if it's a duplicate name error (user needs to change vault name, not PIN)
         if (data.message && data.message.includes("already exists")) {
           setShowModal(false);
         }
@@ -84,7 +83,7 @@ const CreateVault = () => {
         navigate("/vaults");
       }, 1500);
     } catch (err) {
-      console.error("❌ Create vault error:", err);
+      console.error("Create vault error:", err);
       showToast("Network error. Please try again.", "error");
       setShowModal(false);
       setError("Network error. Please try again.");
