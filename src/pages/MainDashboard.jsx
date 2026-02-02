@@ -43,6 +43,18 @@ const MainDashboard = () => {
     fetchVaults();
   }, []);
 
+  useEffect(() => {
+  const validateAuth = async () => {
+    const result = await vaultApi.validateToken();
+    if (!result || !result.valid) {
+      console.log('Token validation failed, redirecting to login');
+      navigate('/login');
+    }
+  };
+  
+  validateAuth();
+}, [navigate]);
+
   const fetchVaults = async () => {
   try {
     setLoading(true);

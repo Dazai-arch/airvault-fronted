@@ -228,16 +228,25 @@ const auditLogSchema = new mongoose.Schema({
 const AuditLog = mongoose.model("AuditLog", auditLogSchema);
 
 
-// auth.routes.js
-router.get('/validate-token', authenticateToken, (req, res) => {
-  res.json({ 
-    valid: true, 
-    user: {
-      id: req.user.id,
-      email: req.user.email,
-      fullName: req.user.fullName
+app.get('/validate-token', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    
+    if (!user) {
+      return res.status(404).json({ valid: false, message: 'User not found' });
     }
-  });
+    
+    res.json({ 
+      valid: true, 
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ valid: false, message: 'Server error' });
+  }
 });
 
 

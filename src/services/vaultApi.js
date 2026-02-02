@@ -264,31 +264,37 @@ export const vaultApi = {
   },
 
   // Validate token (optional - for manual checks)
-  validateToken: async () => {
-    try {
-      const token = getAuthToken();
-      if (!token) return false;
-      
-      const response = await fetch(`${API_BASE_URL}/auth/validate-token`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        credentials: 'include',
-      });
-      
-      if (response.status === 401 || response.status === 403) {
-        handleAuthError('Token validation failed');
-        return false;
-      }
-      
-      return response.ok;
-    } catch (error) {
-      console.error('Error validating token:', error);
-      return false;
+  // Validate token (optional - for manual checks)
+validateToken: async () => {
+  try {
+    const token = getAuthToken();
+    if (!token) return null; // Return null instead of false
+    
+    const response = await fetch(`${API_BASE_URL}/validate-token`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      credentials: 'include',
+    });
+    
+    if (response.status === 401 || response.status === 403) {
+      handleAuthError('Token validation failed');
+      return null;
     }
-  },
+    
+    if (!response.ok) {
+      return null;
+    }
+    
+    const data = await response.json();
+    return data; // Return the full response with user data
+  } catch (error) {
+    console.error('Error validating token:', error);
+    return null;
+  }
+},
 
   // Manual logout function
   logout: () => {
