@@ -9,6 +9,7 @@ import AirVaultHomepage from "./pages/AirVaultHomePage";
 import { ThemeProvider } from './context/ThemeContext';
 import MainDashboard from "./pages/MainDashboard";
 import LoadingScreen from "./components/LoadingScreen";
+import AirDrop from "./pages/AirDrop"
 
 // Enhanced Protected Route Component with Token Validation
 const ProtectedRoute = ({ children }) => {
@@ -18,8 +19,7 @@ const ProtectedRoute = ({ children }) => {
   useEffect(() => {
     const validateAuth = async () => {
       const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-      
-      // No token found
+    
       if (!token) {
         setIsAuthenticated(false);
         setIsValidating(false);
@@ -98,7 +98,7 @@ function App() {
         <VaultProvider>
           <Routes>
             <Route path="/" element={<AirVaultHomepage />} />
-
+            {/* <Route path="/" element={<AirDrop />} /> */}
             <Route 
               path="/auth" 
               element={<AuthPage />} 

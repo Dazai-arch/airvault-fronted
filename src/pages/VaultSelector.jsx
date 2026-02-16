@@ -242,13 +242,22 @@ const VaultSelector = () => {
               <p className={`${isDark ? 'text-slate-400' : 'text-gray-600'} text-sm sm:text-base`}>Select a vault to access your encrypted files</p>
             </div>
 
-            <button
-              onClick={() => navigate("/createvaults")}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-xl hover:shadow-cyan-500/40 transition-all duration-300 hover:scale-105"
-            >
-              <Plus className="w-5 h-5" />
-              <span>New Vault</span>
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              <button
+                onClick={() => navigate("/maindashboard")}
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl ${isDark ? 'bg-slate-700 hover:bg-slate-600 border-slate-600' : 'bg-white hover:bg-gray-50 border-gray-200'} border font-semibold ${isDark ? 'text-white' : 'text-gray-900'} shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105`}
+              >
+                <Shield className="w-5 h-5" />
+                <span>Dashboard</span>
+              </button>
+              <button
+                onClick={() => navigate("/createvaults")}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-xl hover:shadow-cyan-500/40 transition-all duration-300 hover:scale-105"
+              >
+                <Plus className="w-5 h-5" />
+                <span>New Vault</span>
+              </button>
+            </div>
           </div>
         </div>
 
