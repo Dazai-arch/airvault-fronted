@@ -10,6 +10,14 @@ import { ThemeProvider } from './context/ThemeContext';
 import MainDashboard from "./pages/MainDashboard";
 import LoadingScreen from "./components/LoadingScreen";
 import AirDrop from "./pages/AirDrop"
+import AccessLog from "./pages/AccessLog";
+import FileUpload from "./pages/FileUpload";
+import Permissions from "./pages/Permissions";
+import FileSharing from "./pages/FileSharing";  
+import UserProfile from "./pages/UserProfile";
+import Details from "./pages/Details";
+import FileView from "./pages/FileView";
+import FolderView from "./pages/FolderView";
 
 // Enhanced Protected Route Component with Token Validation
 const ProtectedRoute = ({ children }) => {
@@ -98,7 +106,7 @@ function App() {
         <VaultProvider>
           <Routes>
             <Route path="/" element={<AirVaultHomepage />} />
-            {/* <Route path="/" element={<AirDrop />} /> */}
+            <Route path="/airdrop" element={<AirDrop />} />
             <Route 
               path="/auth" 
               element={<AuthPage />} 
@@ -139,6 +147,98 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+
+            <Route 
+              path="/vault/accesslog" 
+              element={
+                <ProtectedRoute>
+                  <AccessLog />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/fileupload" 
+              element={
+                <ProtectedRoute>
+                  <FileUpload />
+                </ProtectedRoute>
+              } 
+            />
+
+            
+
+            <Route 
+              path="/vault/permissions" 
+              element={
+                <ProtectedRoute>
+                  <Permissions />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/filesharing" 
+              element={
+                <ProtectedRoute>
+                  <FileSharing />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/userprofile" 
+              element={
+                <ProtectedRoute>
+                  <UserProfile />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/details" 
+              element={
+                <ProtectedRoute>
+                  <Details />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/file/:fileId" 
+              element={
+                <ProtectedRoute>
+                  <FileView />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/folder/:folderId" 
+              element={
+                <ProtectedRoute>
+                  <FolderView />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/file" 
+              element={
+                <ProtectedRoute>
+                  <FileView />
+                </ProtectedRoute>
+              } 
+            />
+
+            <Route 
+              path="/vault/folder" 
+              element={
+                <ProtectedRoute>
+                  <FolderView />
+                </ProtectedRoute>
+              } 
+            />
             
             <Route 
               path="/vault/:vaultId" 
@@ -153,6 +253,7 @@ function App() {
               path="*" 
               element={<Navigate to="/" replace />} 
             />
+
           </Routes>
         </VaultProvider>
       </BrowserRouter>
