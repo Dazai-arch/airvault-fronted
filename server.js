@@ -2407,21 +2407,13 @@ app.post(
         fileBuffer = await fs.promises.readFile(diskPath);
       } else {
         // Production: fetch from R2 presigned URL
-        const { S3Client, GetObjectCommand } = require("@aws-sdk/client-s3");
-        const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
-        const r2 = new S3Client({
-          region: "auto",
-          endpoint: `https://${process.env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-          credentials: {
-            accessKeyId:     process.env.R2_ACCESS_KEY_ID,
-            secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-          },
-        });
-        const cmd = new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: file.storedKey });
-        const url = await getSignedUrl(r2, cmd, { expiresIn: 60 });
-        const resp = await fetch(url);
-        if (!resp.ok) throw new Error("Could not fetch file from R2");
-        fileBuffer = Buffer.from(await resp.arrayBuffer());
+        const { GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const cmd = new GetObjectCommand({ Bucket: process.env.R2_BUCKET_NAME, Key: file.storedKey });
+const url = await getSignedUrl(r2Client, cmd, { expiresIn: 60 });
+const resp = await fetch(url);
+if (!resp.ok) throw new Error("Could not fetch file from R2");
+fileBuffer = Buffer.from(await resp.arrayBuffer());
       }
 
       // ── Build email ──────────────────────────────────────────────────────────
