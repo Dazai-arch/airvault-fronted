@@ -48,7 +48,11 @@ const connectR2 = async () => {
   }
 
   try {
-    const data = await r2Client.send(new ListBucketsCommand({}));
+    const data = await r2Client.send(new ListObjectsV2Command({
+      Bucket: process.env.R2_BUCKET_NAME,
+      MaxKeys: 1,
+    }));
+    console.log(`R2 Connected ✅ — Bucket: ${process.env.R2_BUCKET_NAME}`);
     const buckets = data.Buckets?.map(b => b.Name).join(", ") || "no buckets yet";
     console.log(`R2 Connected ✅ — Buckets: ${buckets}`);
   } catch (err) {
