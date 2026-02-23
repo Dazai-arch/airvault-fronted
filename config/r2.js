@@ -1,5 +1,4 @@
-const { S3Client, ListBucketsCommand } = require("@aws-sdk/client-s3");
-const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
+const { S3Client, ListBucketsCommand,  ListObjectsV2Command } = require("@aws-sdk/client-s3");
 const fs = require("fs");
 const path = require("path");
 
