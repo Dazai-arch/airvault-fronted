@@ -1931,13 +1931,14 @@ app.get(
 
       } else {
         // Production — proxy through backend to avoid ERR_CERT_AUTHORITY_INVALID
-        const proxyUrl = `${process.env.BACKEND_URL}/api/vaults/${vaultId}/files/${fileId}/stream`;
-        return res.status(200).json({
-          downloadUrl:  proxyUrl,
-          originalName: file.originalName,
-          mimeType:     file.mimeType,
-          isEncrypted:  file.isEncrypted || false,
-        });
+        const token = req.headers["authorization"]?.split(" ")[1];
+  const proxyUrl = `${process.env.BACKEND_URL}/api/vaults/${vaultId}/files/${fileId}/stream?token=${token}`;
+  return res.status(200).json({
+    downloadUrl:  proxyUrl,
+    originalName: file.originalName,
+    mimeType:     file.mimeType,
+    isEncrypted:  file.isEncrypted || false,
+  });
       }
 
     } catch (error) {
@@ -1947,34 +1948,42 @@ app.get(
   }
 );
 
-app.get("/api/vaults/:vaultId/files/:fileId/stream", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/files/:fileId/stream", async (req, res) => {
   try {
+    // Accept token from query param (since browser fetch from blob URL won't have auth header)
+    const token = req.query.token || req.headers["authorization"]?.split(" ")[1];
+    if (!token) return res.status(401).json({ message: "Unauthorized" });
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
     const { vaultId, fileId } = req.params;
 
     const file = await VaultFile.findOne({
-      _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
+      _id: fileId, vaultId, userId: decoded.userId, isDeleted: false,
     });
     if (!file) return res.status(404).json({ message: "File not found" });
 
     const { GetObjectCommand } = require("@aws-sdk/client-s3");
-    const command = new GetObjectCommand({
+    const s3Response = await r2Client.send(new GetObjectCommand({
       Bucket: process.env.R2_BUCKET_NAME,
-      Key: file.storedKey,
-    });
-
-    const s3Response = await r2Client.send(command);
+      Key:    file.storedKey,
+    }));
 
     res.setHeader("Content-Type", "application/octet-stream");
-    res.setHeader("Content-Length", file.size);
-    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL);
+    if (file.size) res.setHeader("Content-Length", file.size);
+    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "*");
     res.setHeader("Access-Control-Allow-Credentials", "true");
 
-    // Pipe R2 stream directly to client
     s3Response.Body.pipe(res);
 
-  } catch (err) {
-    console.error("Stream error:", err);
-    res.status(500).json({ message: "Failed to stream file" });
+  } catch (error) {
+    console.error("Stream File Error:", error);
+    res.status(500).json({ message: "Server error during file stream" });
   }
 });
 
