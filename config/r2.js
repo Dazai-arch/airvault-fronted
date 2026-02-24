@@ -53,8 +53,8 @@ const connectR2 = async () => {
       MaxKeys: 1,
     }));
     console.log(`R2 Connected ✅ — Bucket: ${process.env.R2_BUCKET_NAME}`);
-    const buckets = data.Buckets?.map(b => b.Name).join(", ") || "no buckets yet";
-    console.log(`R2 Connected ✅ — Buckets: ${buckets}`);
+    //const buckets = data.Buckets?.map(b => b.Name).join(", ") || "no buckets yet";
+    //console.log(`R2 Connected ✅ — Buckets: ${buckets}`);
   } catch (err) {
     console.error("R2 Connection Error:", err.message);
     console.log("⚠️ Server will continue without R2");

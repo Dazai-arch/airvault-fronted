@@ -1537,16 +1537,22 @@ app.post(
         storedKey = `vaults/${req.user.userId}/${vaultId}/${req.file.filename}`;
       } else {
         const { PutObjectCommand } = require("@aws-sdk/client-s3");
-        storedKey = `vaults/${req.user.userId}/${vaultId}/${Date.now()}-${req.file.filename}`;
-        const fileBuffer = fs.readFileSync(req.file.path);
-        await r2Client.send(new PutObjectCommand({
-          Bucket: process.env.R2_BUCKET_NAME,
-          Key: storedKey,
-          Body: fileBuffer,
-          // Always store as octet-stream — content is opaque ciphertext
-          ContentType: "application/octet-stream",
-        }));
-        fs.unlinkSync(req.file.path);
+  // Fix: use req.file.filename directly — multer already adds a unique timestamp prefix
+  storedKey = `vaults/${req.user.userId}/${vaultId}/${req.file.filename}`;
+  try {
+    const fileBuffer = fs.readFileSync(req.file.path);
+    await r2Client.send(new PutObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: storedKey,
+      Body: fileBuffer,
+      ContentType: "application/octet-stream",
+    }));
+    fs.unlinkSync(req.file.path); // only delete AFTER confirmed upload
+  } catch (r2Error) {
+    console.error("R2 upload failed:", r2Error);
+    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    return res.status(500).json({ message: "Failed to store file: " + r2Error.message });
+  }
       }
 
       // For ZK uploads: store the ORIGINAL name and MIME in the DB (plaintext metadata).
