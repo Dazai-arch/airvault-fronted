@@ -1635,71 +1635,6 @@ app.get("/api/vaults/:vaultId/files", authenticateToken, async (req, res) => {
   }
 });
 
-// DOWNLOAD FILE
-app.get(
-  "/api/vaults/:vaultId/files/:fileId/download",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { vaultId, fileId } = req.params;
-
-      const file = await VaultFile.findOne({
-        _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
-      });
-      if (!file) return res.status(404).json({ message: "File not found" });
-
-      if (isLocal) {
-        // For ZK files: return a URL so the client can fetch & decrypt the blob.
-        // For non-ZK files: stream directly (legacy / non-encrypted).
-        const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
-        if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File not found on disk" });
-
-        if (file.isEncrypted) {
-          // Return a short-lived local URL; client fetches blob, decrypts, and saves.
-          const localUrl = `${process.env.BACKEND_URL || "http://localhost:5000"}/uploads/r2mock/${file.storedKey}`;
-          return res.status(200).json({
-            localPath:    localUrl,
-            originalName: file.originalName,
-            mimeType:     file.mimeType,
-            isEncrypted:  true,
-          });
-        }
-
-        // Legacy non-encrypted stream
-        res.setHeader("Content-Disposition", `attachment; filename="${file.originalName}"`);
-        res.setHeader("Content-Type", file.mimeType);
-        return res.sendFile(filePath);
-
-      } else {
-        // Production — presigned R2 URL (works for both encrypted and plain files)
-        const { GetObjectCommand } = require("@aws-sdk/client-s3");
-        const { getSignedUrl }      = require("@aws-sdk/s3-request-presigner");
-        const url = await getSignedUrl(
-          r2Client,
-          new GetObjectCommand({
-            Bucket: process.env.R2_BUCKET_NAME,
-            Key: file.storedKey,
-            // For encrypted files, client will handle the save; for plain files, hint the browser
-            ResponseContentDisposition: file.isEncrypted
-              ? undefined
-              : `attachment; filename="${file.originalName}"`,
-          }),
-          { expiresIn: 3600 }
-        );
-        return res.status(200).json({
-          downloadUrl:  url,
-          originalName: file.originalName,
-          mimeType:     file.mimeType,
-          isEncrypted:  file.isEncrypted || false,
-        });
-      }
-    } catch (error) {
-      console.error("Download File Error:", error);
-      res.status(500).json({ message: "Server error during download" });
-    }
-  }
-);
-
 // DELETE FILE
 app.delete("/api/vaults/:vaultId/files/:fileId",
   authenticateToken,
@@ -1959,7 +1894,60 @@ app.post(
 //    For encrypted files: returns URL so client can fetch + decrypt.
 //    For plain files: streams or returns presigned URL.
 // ════════════════════════════════════════════════════════════
-app.get("/api/vaults/:vaultId/files/:fileId/download", authenticateToken, async (req, res) => {
+app.get(
+  "/api/vaults/:vaultId/files/:fileId/download",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { vaultId, fileId } = req.params;
+
+      const file = await VaultFile.findOne({
+        _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
+      });
+      if (!file) return res.status(404).json({ message: "File not found" });
+
+      // Increment download counter
+      await VaultFile.findByIdAndUpdate(fileId, { $inc: { downloads: 1 } });
+      await Vault.findByIdAndUpdate(vaultId, { lastAccessed: new Date() });
+
+      if (isLocal) {
+        const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
+        if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File not found on disk" });
+
+        if (file.isEncrypted) {
+          const localUrl = `${process.env.BACKEND_URL || "http://localhost:5000"}/uploads/r2mock/${file.storedKey}`;
+          return res.status(200).json({
+            localPath:    localUrl,
+            originalName: file.originalName,
+            mimeType:     file.mimeType,
+            isEncrypted:  true,
+          });
+        }
+
+        // Non-encrypted local stream
+        res.setHeader("Content-Disposition", `attachment; filename="${file.originalName}"`);
+        res.setHeader("Content-Type", file.mimeType);
+        return res.sendFile(path.resolve(filePath));
+
+      } else {
+        // Production — proxy through backend to avoid ERR_CERT_AUTHORITY_INVALID
+        const proxyUrl = `${process.env.BACKEND_URL}/api/vaults/${vaultId}/files/${fileId}/stream`;
+        return res.status(200).json({
+          downloadUrl:  proxyUrl,
+          originalName: file.originalName,
+          mimeType:     file.mimeType,
+          isEncrypted:  file.isEncrypted || false,
+        });
+      }
+
+    } catch (error) {
+      console.error("Download File Error:", error);
+      res.status(500).json({ message: "Server error during download" });
+    }
+  }
+);
+
+app.get("/api/vaults/:vaultId/files/:fileId/stream", authenticateToken, async (req, res) => {
   try {
     const { vaultId, fileId } = req.params;
 
@@ -1968,58 +1956,27 @@ app.get("/api/vaults/:vaultId/files/:fileId/download", authenticateToken, async 
     });
     if (!file) return res.status(404).json({ message: "File not found" });
 
-    // Increment download counter
-    await VaultFile.findByIdAndUpdate(fileId, { $inc: { downloads: 1 } });
-    await Vault.findByIdAndUpdate(vaultId, { lastAccessed: new Date() });
+    const { GetObjectCommand } = require("@aws-sdk/client-s3");
+    const command = new GetObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: file.storedKey,
+    });
 
-    if (isLocal) {
-      const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
-      if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File not found on disk" });
+    const s3Response = await r2Client.send(command);
 
-      if (file.isEncrypted) {
-        // Client fetches the blob, decrypts client-side, then triggers download
-        const localUrl = `${process.env.BACKEND_URL || "http://localhost:5000"}/uploads/r2mock/${file.storedKey}`;
-        return res.status(200).json({
-          localPath:    localUrl,
-          originalName: file.originalName,
-          mimeType:     file.mimeType,
-          isEncrypted:  true,
-        });
-      }
+    res.setHeader("Content-Type", "application/octet-stream");
+    res.setHeader("Content-Length", file.size);
+    res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
 
-      // Non-encrypted: stream directly
-      res.setHeader("Content-Disposition", `attachment; filename="${file.originalName}"`);
-      res.setHeader("Content-Type", file.mimeType);
-      return res.sendFile(path.resolve(filePath));
+    // Pipe R2 stream directly to client
+    s3Response.Body.pipe(res);
 
-    } else {
-      // Production R2 — presigned URL for both encrypted and plain
-      const { GetObjectCommand } = require("@aws-sdk/client-s3");
-      const { getSignedUrl }     = require("@aws-sdk/s3-request-presigner");
-      const url = await getSignedUrl(
-        r2Client,
-        new GetObjectCommand({
-          Bucket: process.env.R2_BUCKET_NAME,
-          Key:    file.storedKey,
-          ResponseContentDisposition: file.isEncrypted
-            ? undefined
-            : `attachment; filename="${file.originalName}"`,
-        }),
-        { expiresIn: 3600 }
-      );
-      return res.status(200).json({
-        downloadUrl:  url,
-        originalName: file.originalName,
-        mimeType:     file.mimeType,
-        isEncrypted:  file.isEncrypted,
-      });
-    }
-  } catch (error) {
-    console.error("Download Error:", error);
-    res.status(500).json({ message: "Server error during download" });
+  } catch (err) {
+    console.error("Stream error:", err);
+    res.status(500).json({ message: "Failed to stream file" });
   }
 });
-
 
 // ════════════════════════════════════════════════════════════
 // 5. DELETE /api/vaults/:vaultId/files/:fileId
