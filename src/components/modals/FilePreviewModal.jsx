@@ -628,42 +628,60 @@ export default function FilePreviewModal({
 
     let revoked = false;
     const go = async () => {
-      setLoading(true); setError(null);
-      try {
-        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+  setLoading(true); setError(null);
+  try {
+    console.log("=== PREVIEW START ===");
+    console.log("file:", file);
+    console.log("vaultId:", vaultId);
+    console.log("vaultKey:", vaultKey);
+    console.log("previewType:", previewType);
 
-        // 1. Get download URL
-        const dlRes = await fetch(
-          `${apiBaseUrl || "http://localhost:5000/api"}/vaults/${vaultId}/files/${file.id}/download`,
-          { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
-        );
-        if (!dlRes.ok) throw new Error("Could not get download URL");
-        const { downloadUrl, localPath } = await dlRes.json();
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
 
-        // 2. Fetch raw bytes
-        const fileRes = await fetch(downloadUrl || localPath);
-        if (!fileRes.ok) throw new Error("Could not fetch file");
-        const buf = await fileRes.arrayBuffer();
+    // 1. Get download URL
+    const dlRes = await fetch(
+      `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/download`,
+      { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
+    );
+    console.log("dlRes status:", dlRes.status);
+    const dlData = await dlRes.json();
+    console.log("dlData:", dlData);
 
-        // 3. Decrypt if needed
-        let finalBlob;
-        if (file.isEncrypted) {
-          if (!vaultKey) throw new Error("Vault is locked. Open Upload Files page to unlock first.");
-          finalBlob = await decryptToBlob(buf, vaultKey, mimeType);
-        } else {
-          finalBlob = new Blob([buf], { type: mimeType });
-        }
+    if (!dlRes.ok) throw new Error("Could not get download URL");
+    const { downloadUrl, localPath } = dlData;
 
-        if (!revoked) {
-          setBlob(finalBlob);
-          setBlobUrl(URL.createObjectURL(finalBlob));
-        }
-      } catch(e) {
-        if (!revoked) setError(e.message || "Failed to load file");
-      } finally {
-        if (!revoked) setLoading(false);
-      }
-    };
+    // 2. Fetch raw bytes
+    const fileRes = await fetch(downloadUrl || localPath);
+    console.log("fileRes status:", fileRes.status);
+    console.log("fileRes ok:", fileRes.ok);
+    
+    const buf = await fileRes.arrayBuffer();
+    console.log("buf byteLength:", buf.byteLength);
+
+    // 3. Decrypt if needed
+    let finalBlob;
+    if (file.isEncrypted) {
+      console.log("vaultKey present:", !!vaultKey);
+      if (!vaultKey) throw new Error("Vault is locked.");
+      finalBlob = await decryptToBlob(buf, vaultKey, mimeType);
+      console.log("decrypted blob size:", finalBlob.size);
+    } else {
+      finalBlob = new Blob([buf], { type: mimeType });
+      console.log("plain blob size:", finalBlob.size);
+    }
+
+    if (!revoked) {
+      setBlob(finalBlob);
+      setBlobUrl(URL.createObjectURL(finalBlob));
+      console.log("=== PREVIEW SUCCESS ===");
+    }
+  } catch(e) {
+    console.error("=== PREVIEW ERROR ===", e);
+    if (!revoked) setError(e.message || "Failed to load file");
+  } finally {
+    if (!revoked) setLoading(false);
+  }
+};
     go();
     return () => {
       revoked = true;
