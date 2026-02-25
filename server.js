@@ -1937,7 +1937,8 @@ app.get(
   });
 
   const presignedUrl = await getSignedUrl(r2Client, cmd, { expiresIn: 300 });
-
+console.log("Presigned URL:", presignedUrl);
+console.log("storedKey:", file.storedKey);
   return res.status(200).json({
     downloadUrl:  presignedUrl,
     originalName: file.originalName,
