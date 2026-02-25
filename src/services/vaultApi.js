@@ -48,6 +48,21 @@ const authHeaders = (token) => ({
 // Maps vaultId → CryptoKey (kept in memory only, cleared on page unload)
 const _keyCache = new Map();
 
+// ── Helper: persist a passwordless vault key to the server ───
+// Always call this after deriving a passwordless key so other
+// devices / page reloads can restore it.
+async function _persistPasswordlessKey(vaultId, keyHex, token) {
+  try {
+    await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ keyHex }),
+    });
+  } catch (e) {
+    console.warn("Could not persist vault key to server:", e.message);
+  }
+}
+
 /**
  * Unlock a vault's ZK key and cache it for this session.
  * Must be called before upload/download.
@@ -67,49 +82,64 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   );
   _keyCache.set(vaultId, key);
 
-  // Password vault — save PBKDF2 salt to DB on first use only
-  if (newSalt) {
-    const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ saltB64: newSalt }),
-    });
-    if (!saltRes.ok) {
-      const err = await saltRes.json().catch(() => ({}));
-      throw new Error(`Failed to save ZK salt: ${err.message || saltRes.status}`);
+  if (hasPassword) {
+    // Password vault — save PBKDF2 salt to DB on first use only
+    if (newSalt) {
+      const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ saltB64: newSalt }),
+      });
+      if (!saltRes.ok) {
+        const err = await saltRes.json().catch(() => ({}));
+        throw new Error(`Failed to save ZK salt: ${err.message || saltRes.status}`);
+      }
     }
-  }
-
-  // Passwordless vault — ALWAYS upsert key to DB on every unlock
-  if (!hasPassword && keyHex) {
-    fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ keyHex }),
-    }).catch(e => console.warn("Could not persist vault key:", e));
+  } else {
+    // Passwordless vault — ALWAYS upsert key to server on every unlock.
+    // This ensures the key is available after login on any page.
+    if (keyHex) {
+      await _persistPasswordlessKey(vaultId, keyHex, token);
+    }
   }
 
   return key;
 }
 
+/**
+ * Restore a vault key on page load (e.g. FileView auto-unlock).
+ * For passwordless vaults: fetches the hex key from the server first,
+ * seeds localStorage so resolveVaultKey finds it, then derives the CryptoKey.
+ * For password vaults: same as unlockVaultKey (requires passphrase).
+ */
 export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, saltB64 = null) {
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   if (!token) throw new Error("Not authenticated");
 
   if (!hasPassword) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
-        headers: { "Authorization": `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const { keyHex } = await res.json();
-        localStorage.setItem(`zk_vault_key_${vaultId}`, keyHex);
+    const lsKey = `zk_vault_key_${vaultId}`;
+
+    // 1. If not in localStorage, try to fetch from server first
+    if (!localStorage.getItem(lsKey)) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        if (res.ok) {
+          const { keyHex } = await res.json();
+          if (keyHex) {
+            // Seed localStorage so resolveVaultKey finds it on the next call
+            localStorage.setItem(lsKey, keyHex);
+          }
+        }
+      } catch (e) {
+        console.warn("Could not fetch key from server:", e.message);
       }
-    } catch (e) {
-      console.warn("Could not fetch key from backend:", e);
     }
   }
 
+  // 2. Now derive the CryptoKey (will find hex in localStorage for passwordless)
   return unlockVaultKey(vaultId, hasPassword, passphrase, saltB64);
 }
 
@@ -216,20 +246,11 @@ export const vaultApi = {
   /**
    * Encrypt a file client-side, then upload the ciphertext.
    * The server stores only an opaque encrypted blob.
-   *
-   * @param {object} opts
-   * @param {string}   opts.vaultId
-   * @param {File}     opts.file
-   * @param {object}   opts.metadata   { category, tags, description, label }
-   * @param {string}   opts.folderId
-   * @param {function} opts.onProgress ({ loaded, total }) => void
-   * @returns {{ promise: Promise, abort: () => void }}
    */
   uploadVaultFile: ({ vaultId, file, metadata, folderId, onProgress }) => {
     const token = getAuthToken();
     if (!token) return { promise: Promise.reject(new Error("No token")), abort: () => {} };
 
-    // We need the key synchronously for XHR, so wrap in a controller pattern.
     let xhr;
     const abort = () => xhr?.abort();
 
@@ -242,10 +263,7 @@ export const vaultApi = {
 
       // 3. Build FormData with the encrypted blob.
       const formData = new FormData();
-      // Give the encrypted blob an .enc extension so the server knows it's ciphertext.
       formData.append("file", encryptedBlob, `${originalName}.enc`);
-      // Original metadata stored in plaintext (filenames, categories, etc. are metadata,
-      // not file content — adjust this if you want fully opaque metadata too).
       formData.append("originalName", originalName);
       formData.append("originalMimeType", mimeType);
       formData.append("zeroKnowledge", "true");
@@ -298,11 +316,6 @@ export const vaultApi = {
 
   /**
    * Download an encrypted file, decrypt it client-side, and trigger a browser download.
-   *
-   * @param {string} vaultId
-   * @param {string} fileId
-   * @param {string} originalName  — from file record (stored in plaintext on server)
-   * @param {string} mimeType      — original MIME type
    */
   downloadVaultFile: async (vaultId, fileId, originalName, mimeType) => {
     const token = getAuthToken(); if (!token) return;
@@ -381,36 +394,32 @@ export const vaultApi = {
   },
 
   updateUserProfile: async (payload) => {
-  const token = getAuthToken();
-  if (!token) return;
+    const token = getAuthToken();
+    if (!token) return;
+    const isFormData = payload instanceof FormData;
+    const headers = { Authorization: `Bearer ${token}` };
+    if (!isFormData) headers["Content-Type"] = "application/json";
+    return handleResponse(
+      await fetch(`${API_BASE_URL}/user/profile`, {
+        method: "PUT",
+        headers,
+        credentials: "include",
+        body: isFormData ? payload : JSON.stringify(payload),
+      })
+    );
+  },
 
-  // payload can be FormData (if image uploaded) or plain object
-  const isFormData = payload instanceof FormData;
-
-  const headers = { Authorization: `Bearer ${token}` };
-  if (!isFormData) headers["Content-Type"] = "application/json";
-
-  return handleResponse(
-    await fetch(`${API_BASE_URL}/user/profile`, {
-      method: "PUT",
-      headers,
-      credentials: "include",
-      body: isFormData ? payload : JSON.stringify(payload),
-    })
-  );
-},
-
-deleteAccount: async () => {
-  const token = getAuthToken();
-  if (!token) return;
-  return handleResponse(
-    await fetch(`${API_BASE_URL}/user/account`, {
-      method: "DELETE",
-      headers: authHeaders(token),
-      credentials: "include",
-    })
-  );
-},
+  deleteAccount: async () => {
+    const token = getAuthToken();
+    if (!token) return;
+    return handleResponse(
+      await fetch(`${API_BASE_URL}/user/account`, {
+        method: "DELETE",
+        headers: authHeaders(token),
+        credentials: "include",
+      })
+    );
+  },
 
   logout: () => handleAuthError("Logging out..."),
 };

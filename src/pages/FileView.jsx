@@ -369,49 +369,37 @@ const FileView = () => {
 
   // ── auto-unlock vault ──────────────────────────────────────
   useEffect(() => {
-    if (!activeVault) return;
-    const id = activeVault?.id || activeVault?._id || activeVault?.vaultId;
-    if (!id) return;
+  if (!activeVault) return;
+  const id = activeVault?.id || activeVault?._id || activeVault?.vaultId;
+  if (!id) return;
 
-    const tryUnlock = async () => {
-      // 1. Check if key is already cached (user visited FileUpload first)
-      //    getVaultKey throws if not cached, so we wrap it safely
-      try {
-        const existing = getVaultKey(id);
-        if (existing) {
-          setVaultCryptoKey(existing);
-          setVaultUnlocked(true);
-          return;
-        }
-      } catch { /* not cached yet — continue */ }
-
-      // 2. Passwordless vault → auto-derive key silently
-      if (!activeVault.hasPassword) {
-        try {
-          let saltB64 = null;
-          try {
-            const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-            const r = await fetch(
-              `${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/vaults/${id}/zk-salt`,
-              { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
-            );
-            if (r.ok) { const d = await r.json(); saltB64 = d.saltB64 || null; }
-          } catch { /* no salt yet */ }
-
-          const key = await unlockVaultKey(id, false, null, saltB64);
-          setVaultCryptoKey(key);
-          setVaultUnlocked(true);
-        } catch (e) {
-          console.warn("FileView: auto-unlock failed:", e.message);
-        }
+  const tryUnlock = async () => {
+    // 1. Check if key is already cached
+    try {
+      const existing = getVaultKey(id);
+      if (existing) {
+        setVaultCryptoKey(existing);
+        setVaultUnlocked(true);
+        return;
       }
-      // Password vault with no cached key → leave locked.
-      // User must visit Upload Files page to unlock first.
-    };
+    } catch { /* not cached yet */ }
 
-    tryUnlock();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVault?.id]);
+    // 2. Passwordless vault → use restoreVaultKey (fetches from server if needed)
+    if (!activeVault.hasPassword) {
+      try {
+        // ✅ restoreVaultKey (not unlockVaultKey) — it seeds localStorage from
+        // the server-persisted keyHex before deriving the CryptoKey
+        const key = await restoreVaultKey(id, false, null, null);
+        setVaultCryptoKey(key);
+        setVaultUnlocked(true);
+      } catch (e) {
+        console.warn("FileView: auto-unlock failed:", e.message);
+      }
+    }
+  };
+
+  tryUnlock();
+}, [activeVault?.id]);
 
   // Close type-filter dropdown when clicking outside
   useEffect(() => {

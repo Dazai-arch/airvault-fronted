@@ -4333,14 +4333,18 @@ function timeAgo(date) {
   return `${Math.floor(seconds / 86400)} days ago`;
 }
 
-// Store raw key for passwordless vaults (key is already random — no passphrase needed)
+// Store raw key for passwordless vaults
 app.post("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
     const { keyHex } = req.body;
     if (!keyHex) return res.status(400).json({ message: "keyHex is required" });
+
+    // Ownership check
     const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
     if (!vault) return res.status(404).json({ message: "Vault not found" });
+
+    // Upsert — always update so the key is always fresh
     await ZKSalt.findOneAndUpdate(
       { vaultId },
       { vaultId, userId: req.user.userId, saltB64: keyHex, updatedAt: new Date() },
@@ -4353,13 +4357,23 @@ app.post("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   }
 });
 
+// Get raw key for passwordless vaults
+// ✅ FIX: query by vaultId only (not userId) — ZKSalt has one record per vault
 app.get("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
-    const record = await ZKSalt.findOne({ vaultId, userId: req.user.userId });
+
+    // Still enforce ownership before returning the key
+    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
+    if (!vault) return res.status(404).json({ message: "Vault not found" });
+
+    // Query by vaultId only — don't filter by userId on ZKSalt
+    const record = await ZKSalt.findOne({ vaultId });
     if (!record) return res.status(404).json({ message: "No key found" });
+
     res.status(200).json({ keyHex: record.saltB64 });
   } catch (err) {
+    console.error("ZK Key Fetch Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
