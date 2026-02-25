@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Home, FileText, Upload, FolderPlus, FileSearch, Share2,
@@ -12,12 +12,37 @@ import { useVault } from "../../context/VaultContext";
 const HamburgerMenu = () => {
   const [isExpanded,      setIsExpanded]      = useState(false);
   const [expandedSubmenu, setExpandedSubmenu] = useState(null);
+  const [isMobile,        setIsMobile]        = useState(false);
   const navigate = useNavigate();
   const { isDark }      = useTheme();
   const { activeVault } = useVault();
 
+  // ── Fix 2: detect mobile ──────────────────────────────────────────────────
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mq.matches);
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Close sidebar when clicking outside on mobile
+  const sidebarRef = useRef(null);
+  useEffect(() => {
+    if (!isMobile) return;
+    const handleOutside = (e) => {
+      if (sidebarRef.current && !sidebarRef.current.contains(e.target)) {
+        collapse();
+      }
+    };
+    if (isExpanded) document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [isMobile, isExpanded]);
+
+  // ── Fix 1: use fullName (matches your server's User schema) ───────────────
   const userData    = JSON.parse(localStorage.getItem("user") || "{}");
-  const userInitial = userData.name?.charAt(0).toUpperCase() || "U";
+  const displayName = userData.fullName || userData.name || "User";
+  const userInitial = displayName.charAt(0).toUpperCase();
 
   /* ── sidebar open / close ── */
   const expand = () => {
@@ -41,20 +66,20 @@ const HamburgerMenu = () => {
     {
       id: "dashboard", label: "Dashboard",
       icon: <Home className="w-[18px] h-[18px]" />, iconColor: "text-cyan-400",
-      action: () => navigate("/vault/dashboard"),
+      action: () => { navigate("/vault/dashboard"); if (isMobile) collapse(); },
     },
     {
       id: "accesslog", label: "Access Log",
       icon: <FileText className="w-[18px] h-[18px]" />, iconColor: "text-blue-400",
-      action: () => navigate("/vault/accesslog"),
+      action: () => { navigate("/vault/accesslog"); if (isMobile) collapse(); },
     },
     {
       id: "upload", label: "Upload",
       icon: <Upload className="w-[18px] h-[18px]" />, iconColor: "text-emerald-400",
       hasSubmenu: true,
       submenu: [
-        { label: "Without Folder", icon: <Upload className="w-3 h-3" />,     action: () => navigate("/vault/fileupload") },
-        { label: "With Folder",    icon: <FolderPlus className="w-3 h-3" />, action: () => navigate("/vault/fileupload") },
+        { label: "Without Folder", icon: <Upload className="w-3 h-3" />,     action: () => { navigate("/vault/fileupload"); if (isMobile) collapse(); } },
+        { label: "With Folder",    icon: <FolderPlus className="w-3 h-3" />, action: () => { navigate("/vault/fileupload"); if (isMobile) collapse(); } },
       ],
     },
     {
@@ -62,40 +87,94 @@ const HamburgerMenu = () => {
       icon: <FileSearch className="w-[18px] h-[18px]" />, iconColor: "text-indigo-400",
       hasSubmenu: true,
       submenu: [
-        { label: "File View",   icon: <FileSearch className="w-3 h-3" />, action: () => navigate("/vault/file")   },
-        { label: "Folder View", icon: <Folder className="w-3 h-3" />,     action: () => navigate("/vault/folder") },
+        { label: "File View",   icon: <FileSearch className="w-3 h-3" />, action: () => { navigate("/vault/file");   if (isMobile) collapse(); } },
+        { label: "Folder View", icon: <Folder className="w-3 h-3" />,     action: () => { navigate("/vault/folder"); if (isMobile) collapse(); } },
       ],
     },
     {
       id: "permissions", label: "Permissions",
       icon: <ShieldCheck className="w-[18px] h-[18px]" />, iconColor: "text-violet-400",
-      action: () => navigate("/vault/permissions"),
+      action: () => { navigate("/vault/permissions"); if (isMobile) collapse(); },
     },
     {
       id: "sharing", label: "Sharing",
       icon: <Share2 className="w-[18px] h-[18px]" />, iconColor: "text-teal-400",
-      action: () => navigate("/vault/filesharing"),
+      action: () => { navigate("/vault/filesharing"); if (isMobile) collapse(); },
     },
     {
       id: "details", label: "Details",
       icon: <Settings className="w-[18px] h-[18px]" />, iconColor: "text-slate-400",
-      action: () => navigate("/vault/details"),
+      action: () => { navigate("/vault/details"); if (isMobile) collapse(); },
     },
     {
       id: "createvault", label: "Create Vault",
       icon: <Plus className="w-[18px] h-[18px]" />, iconColor: "text-cyan-400",
-      action: () => navigate("/createvaults"),
+      action: () => { navigate("/createvaults"); if (isMobile) collapse(); },
     },
   ];
 
   return (
     <>
+      {/* ── Mobile overlay backdrop ── */}
+      <AnimatePresence>
+        {isMobile && isExpanded && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={collapse}
+            className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Mobile hamburger toggle button (shown in top bar area) ── */}
+      {isMobile && (
+        <button
+          onClick={isExpanded ? collapse : expand}
+          className={`fixed top-4 left-4 z-[60] p-2 rounded-xl border transition-all duration-300 ${
+            isDark
+              ? "bg-slate-800 border-slate-700 text-gray-300 hover:text-white"
+              : "bg-white border-gray-200 text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            {isExpanded ? (
+              <motion.span
+                key="close"
+                initial={{ rotate: -90, opacity: 0 }}
+                animate={{ rotate: 0,   opacity: 1 }}
+                exit={{   rotate:  90,  opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                <X className="w-5 h-5" />
+              </motion.span>
+            ) : (
+              <motion.span
+                key="open"
+                initial={{ rotate: 90,  opacity: 0 }}
+                animate={{ rotate: 0,   opacity: 1 }}
+                exit={{   rotate: -90,  opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                <Menu className="w-5 h-5" />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
+      )}
+
       <motion.aside
+        ref={sidebarRef}
         initial={false}
-        animate={{ width: isExpanded ? 220 : 60 }}
+        animate={{
+          width: isExpanded ? 220 : (isMobile ? 0 : 60),
+          x: isMobile && !isExpanded ? -220 : 0,
+        }}
         transition={{ type: "spring", damping: 24, stiffness: 280 }}
-        onMouseEnter={expand}
-        onMouseLeave={collapse}
+        // Desktop: hover to expand | Mobile: controlled by toggle button only
+        onMouseEnter={!isMobile ? expand   : undefined}
+        onMouseLeave={!isMobile ? collapse : undefined}
         className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col border-r overflow-hidden transition-colors duration-300 ${
           isDark ? "bg-slate-900/95 border-slate-700/50" : "bg-white/95 border-gray-200"
         }`}
@@ -221,8 +300,8 @@ const HamburgerMenu = () => {
           {/* User profile button */}
           <motion.button
             whileTap={{ scale: 0.97 }}
-            title={!isExpanded ? (userData.name || "Profile") : undefined}
-            onClick={() => navigate("/vault/userprofile")}
+            title={!isExpanded ? displayName : undefined}
+            onClick={() => { navigate("/vault/userprofile"); if (isMobile) collapse(); }}
             className={`w-full flex items-center rounded-xl transition-all duration-200 group relative ${
               isExpanded ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
             }`}
@@ -242,7 +321,8 @@ const HamburgerMenu = () => {
                   className="relative flex-1 text-left min-w-0 flex items-center gap-2"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className={`text-xs font-semibold truncate ${isDark ? "text-white" : "text-gray-900"}`}>{userData.name || "User"}</p>
+                    {/* Fix 1: use fullName → displayName */}
+                    <p className={`text-xs font-semibold truncate ${isDark ? "text-white" : "text-gray-900"}`}>{displayName}</p>
                     <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{userData.email || ""}</p>
                   </div>
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
