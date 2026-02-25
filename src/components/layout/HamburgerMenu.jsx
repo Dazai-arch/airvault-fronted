@@ -26,7 +26,8 @@ const HamburgerMenu = () => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // ── Close on outside tap (mobile only) ────────────────────
+  // ── Close on outside click (mobile only) ──────────────────
+  // Uses mousedown instead of touchstart to avoid race with button onClick
   useEffect(() => {
     if (!isMobile || !isExpanded) return;
     const handler = (e) => {
@@ -34,16 +35,13 @@ const HamburgerMenu = () => {
         collapse();
       }
     };
-    // small delay so the open-tap doesn't immediately close it
-    const t = setTimeout(() => document.addEventListener("touchstart", handler), 50);
-    return () => { clearTimeout(t); document.removeEventListener("touchstart", handler); };
+    const t = setTimeout(() => document.addEventListener("mousedown", handler), 50);
+    return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
   }, [isMobile, isExpanded]);
 
   // ── Read user — handle ALL possible shapes ────────────────
-  // Server stores: { fullName, email, id, ... }
-  // Some frontends wrap it: { user: { fullName, ... } }
   const rawUser     = JSON.parse(localStorage.getItem("user") || "{}");
-  const userData    = rawUser?.user ?? rawUser;          // unwrap if nested
+  const userData    = rawUser?.user ?? rawUser;
   const displayName = userData?.fullName || userData?.name || "User";
   const userEmail   = userData?.email || "";
   const userInitial = displayName.charAt(0).toUpperCase() || "U";
@@ -130,7 +128,7 @@ const HamburgerMenu = () => {
 
   return (
     <>
-      {/* ── Mobile backdrop ────────────────────────────────── */}
+      {/* ── Mobile backdrop — sits below sidebar (z-30) ────── */}
       <AnimatePresence>
         {isMobile && isExpanded && (
           <motion.div
@@ -139,19 +137,22 @@ const HamburgerMenu = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            onTouchStart={collapse}
             onClick={collapse}
             className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
           />
         )}
       </AnimatePresence>
 
-      {/* ── Mobile toggle button (outside sidebar, z-70) ───── */}
+      {/* ── Mobile toggle button
+            z-[49]: above sidebar (z-[48]) and backdrop (z-30)
+            but BELOW modals which should use z-50+           ── */}
       {isMobile && (
         <button
-          onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); isExpanded ? collapse() : expand(); }}
-          onClick={(e) => { e.stopPropagation(); isExpanded ? collapse() : expand(); }}
-          className={`fixed top-[14px] left-3 z-[70] p-2 rounded-xl border shadow-lg transition-all duration-200 ${
+          onClick={(e) => {
+            e.stopPropagation();
+            isExpanded ? collapse() : expand();
+          }}
+          className={`fixed top-[14px] left-3 z-[49] p-2 rounded-xl border shadow-lg transition-all duration-200 ${
             isDark
               ? "bg-slate-800 border-slate-700 text-cyan-400"
               : "bg-white border-gray-200 text-cyan-600"
@@ -161,7 +162,7 @@ const HamburgerMenu = () => {
         </button>
       )}
 
-      {/* ── Sidebar ────────────────────────────────────────── */}
+      {/* ── Sidebar — z-[48] so modals (z-50+) appear above it ── */}
       <motion.aside
         ref={sidebarRef}
         initial={false}
@@ -173,7 +174,7 @@ const HamburgerMenu = () => {
           backdropFilter: "blur(20px)",
           pointerEvents: isMobile && !isExpanded ? "none" : "auto",
         }}
-        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col border-r overflow-hidden transition-colors duration-300 ${
+        className={`fixed left-0 top-16 bottom-0 z-[48] flex flex-col border-r overflow-hidden transition-colors duration-300 ${
           isDark ? "bg-slate-900/95 border-slate-700/50" : "bg-white/95 border-gray-200"
         }`}
       >
