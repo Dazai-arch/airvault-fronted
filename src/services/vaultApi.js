@@ -1,10 +1,8 @@
 // ====================================
 // VAULT API SERVICE  —  Zero-Knowledge Edition
-// Files are encrypted client-side (AES-GCM 256) before any network call.
-// The server NEVER receives plaintext file content.
 // ====================================
 
-import { encryptFile, decryptToBlob, resolveVaultKey } from "./ZKcrypto";
+import { encryptFile, decryptToBlob, resolveVaultKey, generateRandomKey, importKeyFromHex, storeVaultKeyHex, getVaultKeyHex } from "./ZKcrypto";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -45,34 +43,10 @@ const authHeaders = (token) => ({
 });
 
 // ── zero-knowledge key cache (per session) ───────────────────
-// Maps vaultId → CryptoKey (kept in memory only, cleared on page unload)
 const _keyCache = new Map();
 
 // ── Helper: persist a passwordless vault key to the server ───
-// Always call this after deriving a passwordless key so other
-// devices / page reloads can restore it.
-async function _persistPasswordlessKey(vaultId, keyHex, token) {
-  try {
-    await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ keyHex }),
-    });
-  } catch (e) {
-    console.warn("Could not persist vault key to server:", e.message);
-  }
-}
-
-/**
- * Unlock a vault's ZK key and cache it for this session.
- * Must be called before upload/download.
- *
- * @param {string}      vaultId
- * @param {boolean}     hasPassword
- * @param {string|null} passphrase    — user-typed vault password (or null)
- * @param {string|null} saltB64       — salt stored on the server for this vault
- * @returns {Promise<CryptoKey>}
- */
+// Only persists if no key exists yet — never overwrites existing key
 async function _persistPasswordlessKey(vaultId, keyHex, token) {
   try {
     // Check if key already exists on server
@@ -101,6 +75,7 @@ async function _persistPasswordlessKey(vaultId, keyHex, token) {
   }
 }
 
+// ── Unlock vault key ─────────────────────────────────────────
 export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, saltB64 = null) {
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   if (!token) throw new Error("Not authenticated");
@@ -108,7 +83,7 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   if (!hasPassword) {
     const lsKey = `zk_vault_key_${vaultId}`;
 
-    // Always fetch from server first
+    // Always fetch from server first — server is source of truth
     try {
       const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -117,7 +92,6 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
       if (res.ok) {
         const { keyHex } = await res.json();
         if (keyHex) {
-          // Server has a key — always use server key (source of truth)
           localStorage.setItem(lsKey, keyHex);
           storeVaultKeyHex(vaultId, keyHex);
           const key = await importKeyFromHex(keyHex);
@@ -139,8 +113,6 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
       localStorage.setItem(lsKey, hex);
       storeVaultKeyHex(vaultId, hex);
       _keyCache.set(vaultId, key);
-
-      // Persist to server (first time only)
       await _persistPasswordlessKey(vaultId, hex, token);
       return key;
     }
@@ -154,7 +126,7 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   }
 
   // Password vault
-  const { key, saltB64: newSalt, keyHex } = await resolveVaultKey(
+  const { key, saltB64: newSalt } = await resolveVaultKey(
     vaultId, hasPassword, passphrase, saltB64
   );
   _keyCache.set(vaultId, key);
@@ -174,6 +146,7 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   return key;
 }
 
+// ── Restore vault key on page load ───────────────────────────
 export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, saltB64 = null) {
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   if (!token) throw new Error("Not authenticated");
@@ -181,7 +154,7 @@ export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, s
   if (!hasPassword) {
     const lsKey = `zk_vault_key_${vaultId}`;
 
-    // Always fetch from server first — server is source of truth
+    // Always fetch from server first
     try {
       const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -190,7 +163,6 @@ export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, s
       if (res.ok) {
         const { keyHex } = await res.json();
         if (keyHex) {
-          // Sync server key to local storage
           localStorage.setItem(lsKey, keyHex);
           storeVaultKeyHex(vaultId, keyHex);
           const key = await importKeyFromHex(keyHex);
@@ -218,10 +190,7 @@ export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, s
   return unlockVaultKey(vaultId, hasPassword, passphrase, saltB64);
 }
 
-
-/**
- * Retrieve a cached vault key (must have called unlockVaultKey first).
- */
+// ── Get cached vault key ──────────────────────────────────────
 export function getVaultKey(vaultId) {
   const k = _keyCache.get(vaultId);
   if (!k) throw new Error("Vault is locked. Unlock it before accessing files.");
@@ -235,7 +204,6 @@ export function lockVault(vaultId) {
 // ── vault CRUD ───────────────────────────────────────────────
 
 export const vaultApi = {
-  // ── vaults ──────────────────────────────────────────────────
 
   getAllVaults: async () => {
     const token = getAuthToken(); if (!token) return;
@@ -290,8 +258,6 @@ export const vaultApi = {
     }));
   },
 
-  // ── user ─────────────────────────────────────────────────────
-
   getUserProfile: async () => {
     const token = getAuthToken(); if (!token) return;
     return handleResponse(await fetch(`${API_BASE_URL}/user/profile`, {
@@ -317,12 +283,6 @@ export const vaultApi = {
     } catch { return null; }
   },
 
-  // ── ZK file upload (with XHR for progress) ───────────────────
-
-  /**
-   * Encrypt a file client-side, then upload the ciphertext.
-   * The server stores only an opaque encrypted blob.
-   */
   uploadVaultFile: ({ vaultId, file, metadata, folderId, onProgress }) => {
     const token = getAuthToken();
     if (!token) return { promise: Promise.reject(new Error("No token")), abort: () => {} };
@@ -331,13 +291,9 @@ export const vaultApi = {
     const abort = () => xhr?.abort();
 
     const promise = (async () => {
-      // 1. Get the cached CryptoKey for this vault.
-      const key = getVaultKey(vaultId); // throws if vault is locked
-
-      // 2. Encrypt the file in the browser.
+      const key = getVaultKey(vaultId);
       const { encryptedBlob, originalName, mimeType } = await encryptFile(file, key);
 
-      // 3. Build FormData with the encrypted blob.
       const formData = new FormData();
       formData.append("file", encryptedBlob, `${originalName}.enc`);
       formData.append("originalName", originalName);
@@ -349,7 +305,6 @@ export const vaultApi = {
       formData.append("label",       metadata.label       || "");
       formData.append("folderId",    folderId             || "root");
 
-      // 4. XHR upload so we can report progress.
       return new Promise((resolve, reject) => {
         xhr = new XMLHttpRequest();
         const tracker = { lastLoaded: 0, lastTime: performance.now() };
@@ -388,15 +343,9 @@ export const vaultApi = {
     return { promise, abort };
   },
 
-  // ── ZK file download (decrypt in-browser) ───────────────────
-
-  /**
-   * Download an encrypted file, decrypt it client-side, and trigger a browser download.
-   */
   downloadVaultFile: async (vaultId, fileId, originalName, mimeType) => {
     const token = getAuthToken(); if (!token) return;
 
-    // 1. Get presigned / download URL from server.
     const response = await fetch(
       `${API_BASE_URL}/vaults/${vaultId}/files/${fileId}/download`,
       { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
@@ -406,16 +355,13 @@ export const vaultApi = {
     const { downloadUrl, localPath } = await response.json();
     const url = downloadUrl || localPath;
 
-    // 2. Fetch the encrypted blob.
     const encResponse = await fetch(url);
     if (!encResponse.ok) throw new Error("Could not fetch encrypted file");
     const encryptedBuf = await encResponse.arrayBuffer();
 
-    // 3. Decrypt client-side.
-    const key        = getVaultKey(vaultId);
-    const plainBlob  = await decryptToBlob(encryptedBuf, key, mimeType || "application/octet-stream");
+    const key       = getVaultKey(vaultId);
+    const plainBlob = await decryptToBlob(encryptedBuf, key, mimeType || "application/octet-stream");
 
-    // 4. Trigger browser download.
     const blobUrl = URL.createObjectURL(plainBlob);
     const a       = document.createElement("a");
     a.href        = blobUrl;
@@ -425,8 +371,6 @@ export const vaultApi = {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
   },
-
-  // ── file listing / deletion ──────────────────────────────────
 
   getVaultFiles: async (vaultId, folderId) => {
     const token = getAuthToken(); if (!token) return;
@@ -451,8 +395,6 @@ export const vaultApi = {
       headers: authHeaders(token), credentials: "include",
     }));
   },
-
-  // ── folders ──────────────────────────────────────────────────
 
   createFolder: async (vaultId, { name, parentId, folderId }) => {
     const token = getAuthToken(); if (!token) return;
