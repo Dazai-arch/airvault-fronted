@@ -1636,44 +1636,41 @@ app.get("/api/vaults/:vaultId/files", authenticateToken, async (req, res) => {
 });
 
 // DELETE FILE
-app.delete("/api/vaults/:vaultId/files/:fileId",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { vaultId, fileId } = req.params;
+app.delete("/api/vaults/:vaultId/files/:fileId", authenticateToken, async (req, res) => {
+  try {
+    const { vaultId, fileId } = req.params;
 
-      const file = await VaultFile.findOne({
-        _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
-      });
-      if (!file) return res.status(404).json({ message: "File not found" });
+    const file = await VaultFile.findOne({
+      _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
+    });
+    if (!file) return res.status(404).json({ message: "File not found" });
 
-      if (isLocal) {
-        // Delete from local mock
-        const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-      } else {
-        // Delete from real R2
-        const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
-        await r2Client.send(new DeleteObjectCommand({
-          Bucket: process.env.R2_BUCKET_NAME,
-          Key: file.storedKey,
-        }));
-      }
-
-      file.isDeleted = true;
-      await file.save();
-
-      await Vault.findByIdAndUpdate(vaultId, {
-        $inc: { fileCount: -1, totalSize: -file.size },
-      });
-
-      res.status(200).json({ message: "File deleted successfully" });
-    } catch (error) {
-      console.error("Delete File Error:", error);
-      res.status(500).json({ message: "Server error deleting file" });
+    // Delete from storage
+    if (isLocal) {
+      const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } else {
+      const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
+      await r2Client.send(new DeleteObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: file.storedKey,
+      })).catch(e => console.warn("R2 delete warning:", e.message));
     }
+
+    // Hard delete the DB record — actually removes it from MongoDB
+    await VaultFile.findByIdAndDelete(fileId);
+
+    // Update vault counters
+    await Vault.findByIdAndUpdate(vaultId, {
+      $inc: { fileCount: -1, totalSize: -file.size },
+    });
+
+    res.status(200).json({ message: "File deleted successfully" });
+  } catch (error) {
+    console.error("Delete File Error:", error);
+    res.status(500).json({ message: "Server error deleting file" });
   }
-);
+});
 
 // GET VAULT STORAGE INFO
 app.get("/api/vaults/:vaultId/storage", authenticateToken, async (req, res) => {
@@ -1986,48 +1983,6 @@ app.get("/api/vaults/:vaultId/files/:fileId/stream", async (req, res) => {
     res.status(500).json({ message: "Server error during file stream" });
   }
 });
-
-// ════════════════════════════════════════════════════════════
-// 5. DELETE /api/vaults/:vaultId/files/:fileId
-//    Soft-deletes the file record and removes it from storage.
-// ════════════════════════════════════════════════════════════
-app.delete("/api/vaults/:vaultId/files/:fileId", authenticateToken, async (req, res) => {
-  try {
-    const { vaultId, fileId } = req.params;
-
-    const file = await VaultFile.findOne({
-      _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
-    });
-    if (!file) return res.status(404).json({ message: "File not found" });
-
-    // Remove from storage
-    if (isLocal) {
-      const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    } else {
-      const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
-      await r2Client.send(new DeleteObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
-        Key:    file.storedKey,
-      })).catch(e => console.warn("R2 delete warning:", e.message));
-    }
-
-    // Soft-delete the DB record
-    await VaultFile.findByIdAndUpdate(fileId, { isDeleted: true });
-
-    // Update vault counters
-    await Vault.findByIdAndUpdate(vaultId, {
-      $inc: { fileCount: -1, totalSize: -file.size },
-    });
-
-    res.status(200).json({ message: "File deleted successfully" });
-  } catch (error) {
-    console.error("Delete Error:", error);
-    res.status(500).json({ message: "Server error during delete" });
-  }
-});
-
-
 
 // ════════════════════════════════════════════════════════════
 // 9. PATCH /api/vaults/:vaultId/files/:fileId/view

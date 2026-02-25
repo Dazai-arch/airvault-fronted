@@ -65,16 +65,20 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   // If a new salt was generated (first encryption for a password vault),
   // persist it to the server so it can be retrieved for future decryptions.
   if (newSalt) {
-    const token = getAuthToken();
-    if (token) {
-      await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
-        method: "POST",
-        headers: authHeaders(token),
-        credentials: "include",
-        body: JSON.stringify({ saltB64: newSalt }),
-      }).catch((e) => console.warn("Could not persist ZK salt:", e));
-    }
+  const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
+    body: JSON.stringify({ saltB64: newSalt }),
+  });
+
+  if (!saltRes.ok) {
+    const err = await saltRes.json().catch(() => ({}));
+    throw new Error(`Failed to save ZK salt: ${err.message || saltRes.status}`);
   }
+}
 
   return key;
 }
