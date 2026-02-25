@@ -73,45 +73,107 @@ async function _persistPasswordlessKey(vaultId, keyHex, token) {
  * @param {string|null} saltB64       — salt stored on the server for this vault
  * @returns {Promise<CryptoKey>}
  */
+async function _persistPasswordlessKey(vaultId, keyHex, token) {
+  try {
+    // Check if key already exists on server
+    const existing = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+
+    if (existing.ok) {
+      const data = await existing.json();
+      if (data.keyHex) {
+        // Key already exists — do NOT overwrite
+        console.log("Key already exists on server, skipping persist");
+        return;
+      }
+    }
+
+    // No key on server yet — safe to persist
+    await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ keyHex }),
+    });
+  } catch (e) {
+    console.warn("Could not persist vault key to server:", e.message);
+  }
+}
+
 export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, saltB64 = null) {
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   if (!token) throw new Error("Not authenticated");
 
+  if (!hasPassword) {
+    const lsKey = `zk_vault_key_${vaultId}`;
+
+    // Always fetch from server first
+    try {
+      const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const { keyHex } = await res.json();
+        if (keyHex) {
+          // Server has a key — always use server key (source of truth)
+          localStorage.setItem(lsKey, keyHex);
+          storeVaultKeyHex(vaultId, keyHex);
+          const key = await importKeyFromHex(keyHex);
+          _keyCache.set(vaultId, key);
+          return key;
+        }
+      }
+    } catch (e) {
+      console.warn("Could not fetch key from server:", e.message);
+    }
+
+    // No key on server — check local storage
+    let hex = localStorage.getItem(lsKey) || getVaultKeyHex(vaultId);
+
+    if (!hex) {
+      // Truly new vault — generate fresh key
+      const { key, rawHex } = await generateRandomKey();
+      hex = rawHex;
+      localStorage.setItem(lsKey, hex);
+      storeVaultKeyHex(vaultId, hex);
+      _keyCache.set(vaultId, key);
+
+      // Persist to server (first time only)
+      await _persistPasswordlessKey(vaultId, hex, token);
+      return key;
+    }
+
+    // Key found locally but not on server — persist it
+    storeVaultKeyHex(vaultId, hex);
+    const key = await importKeyFromHex(hex);
+    _keyCache.set(vaultId, key);
+    await _persistPasswordlessKey(vaultId, hex, token);
+    return key;
+  }
+
+  // Password vault
   const { key, saltB64: newSalt, keyHex } = await resolveVaultKey(
     vaultId, hasPassword, passphrase, saltB64
   );
   _keyCache.set(vaultId, key);
 
-  if (hasPassword) {
-    // Password vault — save PBKDF2 salt to DB on first use only
-    if (newSalt) {
-      const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ saltB64: newSalt }),
-      });
-      if (!saltRes.ok) {
-        const err = await saltRes.json().catch(() => ({}));
-        throw new Error(`Failed to save ZK salt: ${err.message || saltRes.status}`);
-      }
-    }
-  } else {
-    // Passwordless vault — ALWAYS upsert key to server on every unlock.
-    // This ensures the key is available after login on any page.
-    if (keyHex) {
-      await _persistPasswordlessKey(vaultId, keyHex, token);
+  if (hasPassword && newSalt) {
+    const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ saltB64: newSalt }),
+    });
+    if (!saltRes.ok) {
+      const err = await saltRes.json().catch(() => ({}));
+      throw new Error(`Failed to save ZK salt: ${err.message || saltRes.status}`);
     }
   }
 
   return key;
 }
 
-/**
- * Restore a vault key on page load (e.g. FileView auto-unlock).
- * For passwordless vaults: fetches the hex key from the server first,
- * seeds localStorage so resolveVaultKey finds it, then derives the CryptoKey.
- * For password vaults: same as unlockVaultKey (requires passphrase).
- */
 export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, saltB64 = null) {
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   if (!token) throw new Error("Not authenticated");
@@ -119,29 +181,43 @@ export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, s
   if (!hasPassword) {
     const lsKey = `zk_vault_key_${vaultId}`;
 
-    // 1. If not in localStorage, try to fetch from server first
-    if (!localStorage.getItem(lsKey)) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-        });
-        if (res.ok) {
-          const { keyHex } = await res.json();
-          if (keyHex) {
-            // Seed localStorage so resolveVaultKey finds it on the next call
-            localStorage.setItem(lsKey, keyHex);
-          }
+    // Always fetch from server first — server is source of truth
+    try {
+      const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const { keyHex } = await res.json();
+        if (keyHex) {
+          // Sync server key to local storage
+          localStorage.setItem(lsKey, keyHex);
+          storeVaultKeyHex(vaultId, keyHex);
+          const key = await importKeyFromHex(keyHex);
+          _keyCache.set(vaultId, key);
+          return key;
         }
-      } catch (e) {
-        console.warn("Could not fetch key from server:", e.message);
       }
+    } catch (e) {
+      console.warn("Could not fetch key from server:", e.message);
     }
+
+    // Fallback to local storage
+    const hex = localStorage.getItem(lsKey) || getVaultKeyHex(vaultId);
+    if (hex) {
+      storeVaultKeyHex(vaultId, hex);
+      const key = await importKeyFromHex(hex);
+      _keyCache.set(vaultId, key);
+      return key;
+    }
+
+    throw new Error("Vault key not found. Please re-upload your files.");
   }
 
-  // 2. Now derive the CryptoKey (will find hex in localStorage for passwordless)
+  // Password vault
   return unlockVaultKey(vaultId, hasPassword, passphrase, saltB64);
 }
+
 
 /**
  * Retrieve a cached vault key (must have called unlockVaultKey first).

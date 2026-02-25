@@ -1496,110 +1496,6 @@ app.get("/api/vaults/:vaultId/zk-salt", authenticateToken, async (req, res) => {
   }
 });
 
-
-// UPLOAD FILE
-app.post(
-  "/api/vaults/:vaultId/files/upload",
-  authenticateToken,
-  vaultUpload.single("file"),
-  async (req, res) => {
-    try {
-      const { vaultId } = req.params;
-      const {
-        category, tags, description, label, folderId,
-        // ZK metadata sent alongside the ciphertext
-        originalName, originalMimeType, zeroKnowledge,
-      } = req.body;
-
-      if (!req.file) return res.status(400).json({ message: "No file provided" });
-
-      // Verify vault ownership
-      const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-      if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-      // Check storage limit
-      const storageUsed = await getVaultStorageUsed(vaultId);
-      if (storageUsed + req.file.size > VAULT_STORAGE_LIMIT) {
-        fs.unlinkSync(req.file.path);
-        const remaining = VAULT_STORAGE_LIMIT - storageUsed;
-        return res.status(400).json({
-          message: `Storage limit exceeded. ${(remaining / 1024 / 1024).toFixed(1)}MB remaining.`,
-        });
-      }
-
-      // Determine whether this is a ZK (encrypted) upload
-      const isZK = zeroKnowledge === "true" || zeroKnowledge === true;
-
-      // Stored filename: for ZK uploads the file already has .enc extension (added by the client)
-      let storedKey;
-
-      if (isLocal) {
-        storedKey = `vaults/${req.user.userId}/${vaultId}/${req.file.filename}`;
-      } else {
-        const { PutObjectCommand } = require("@aws-sdk/client-s3");
-  // Fix: use req.file.filename directly — multer already adds a unique timestamp prefix
-  storedKey = `vaults/${req.user.userId}/${vaultId}/${req.file.filename}`;
-  try {
-    const fileBuffer = fs.readFileSync(req.file.path);
-    await r2Client.send(new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: storedKey,
-      Body: fileBuffer,
-      ContentType: "application/octet-stream",
-    }));
-    fs.unlinkSync(req.file.path); // only delete AFTER confirmed upload
-  } catch (r2Error) {
-    console.error("R2 upload failed:", r2Error);
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    return res.status(500).json({ message: "Failed to store file: " + r2Error.message });
-  }
-      }
-
-      // For ZK uploads: store the ORIGINAL name and MIME in the DB (plaintext metadata).
-      // The actual file bytes are encrypted — the server cannot read them.
-      const fileRecord = await VaultFile.create({
-        vaultId,
-        userId: req.user.userId,
-        // originalName: prefer the ZK field (the true filename before .enc was appended)
-        originalName: isZK ? (originalName || req.file.originalname.replace(/\.enc$/, "")) : req.file.originalname,
-        storedKey,
-        // mimeType: for ZK files store the original MIME (not application/octet-stream)
-        mimeType: isZK ? (originalMimeType || "application/octet-stream") : req.file.mimetype,
-        size: req.file.size,
-        folderId: folderId || "root",
-        category: category || "General",
-        tags: tags ? JSON.parse(tags) : [],
-        description: description || "",
-        label: label || "",
-        // Flag so download route knows to send back ciphertext (not stream directly)
-        isEncrypted: isZK,
-      });
-
-      await Vault.findByIdAndUpdate(vaultId, {
-        $inc: { fileCount: 1, totalSize: req.file.size },
-        lastAccessed: new Date(),
-      });
-
-      res.status(201).json({
-        message: isZK ? "File encrypted & uploaded successfully" : "File uploaded successfully",
-        file: {
-          id:          fileRecord._id,
-          name:        fileRecord.originalName,
-          size:        fileRecord.size,
-          mimeType:    fileRecord.mimeType,
-          folderId:    fileRecord.folderId,
-          isEncrypted: fileRecord.isEncrypted,
-          uploadedAt:  fileRecord.uploadedAt,
-        },
-      });
-    } catch (error) {
-      console.error("Upload File Error:", error);
-      if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-      res.status(500).json({ message: "Server error during file upload" });
-    }
-  }
-);
-
 // GET ALL FILES IN VAULT
 app.get("/api/vaults/:vaultId/files", authenticateToken, async (req, res) => {
   try {
@@ -1816,7 +1712,6 @@ app.post(
       const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
       if (!vault) return res.status(404).json({ message: "Vault not found" });
 
-      // Storage check
       const storageUsed = await getVaultStorageUsed(vaultId);
       if (storageUsed + req.file.size > (vault.storageLimitBytes || VAULT_STORAGE_LIMIT)) {
         fs.unlinkSync(req.file.path);
@@ -1833,7 +1728,7 @@ app.post(
         storedKey = `vaults/${req.user.userId}/${vaultId}/${req.file.filename}`;
       } else {
         const { PutObjectCommand } = require("@aws-sdk/client-s3");
-        storedKey = `vaults/${req.user.userId}/${vaultId}/${Date.now()}-${req.file.filename}`;
+        storedKey = `vaults/${req.user.userId}/${vaultId}/${req.file.filename}`;
         const fileBuffer = fs.readFileSync(req.file.path);
         await r2Client.send(new PutObjectCommand({
           Bucket: process.env.R2_BUCKET_NAME,
@@ -1846,20 +1741,19 @@ app.post(
 
       const fileRecord = await VaultFile.create({
         vaultId,
-        userId:      req.user.userId,
+        userId:       req.user.userId,
         originalName: isZK ? (originalName || req.file.originalname.replace(/\.enc$/, "")) : req.file.originalname,
         storedKey,
-        mimeType:    isZK ? (originalMimeType || "application/octet-stream") : req.file.mimetype,
-        size:        req.file.size,
-        folderId:    folderId || "root",
-        category:    category || "General",
-        tags:        tags ? JSON.parse(tags) : [],
-        description: description || "",
-        label:       label || "",
-        isEncrypted: isZK,
+        mimeType:     isZK ? (originalMimeType || "application/octet-stream") : req.file.mimetype,
+        size:         req.file.size,
+        folderId:     folderId || "root",
+        category:     category || "General",
+        tags:         tags ? JSON.parse(tags) : [],
+        description:  description || "",
+        label:        label || "",
+        isEncrypted:  isZK,
       });
 
-      // Update vault counters
       await Vault.findByIdAndUpdate(vaultId, {
         $inc: { fileCount: 1, totalSize: req.file.size },
         lastAccessed: new Date(),

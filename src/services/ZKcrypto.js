@@ -193,20 +193,16 @@ export async function resolveVaultKey(vaultId, hasPassword, passphrase = null, s
     return { key, saltB64: newSaltB64, keyHex: null, isNewKey: false };
 
   } else {
-    // Check localStorage first, then sessionStorage
     const lsKey = `zk_vault_key_${vaultId}`;
     let hex = localStorage.getItem(lsKey) || getVaultKeyHex(vaultId);
 
     if (!hex) {
-      // No key anywhere — generate new one (brand new vault)
-      const { key, rawHex } = await generateRandomKey();
-      hex = rawHex;
-      localStorage.setItem(lsKey, hex);
-      storeVaultKeyHex(vaultId, hex);
-      return { key, saltB64: null, keyHex: hex, isNewKey: true };
+      // No key found locally — do NOT generate a new one
+      // This would destroy existing encrypted files
+      // Caller must fetch from server first via restoreVaultKey
+      throw new Error("NO_LOCAL_KEY");
     }
 
-    // Key found locally — sync to sessionStorage and return
     storeVaultKeyHex(vaultId, hex);
     const key = await importKeyFromHex(hex);
     return { key, saltB64: null, keyHex: hex, isNewKey: false };
