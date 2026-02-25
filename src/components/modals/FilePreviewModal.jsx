@@ -630,12 +630,7 @@ export default function FilePreviewModal({
     const go = async () => {
   setLoading(true); setError(null);
   try {
-    console.log("=== PREVIEW START ===");
-    console.log("file:", file);
-    console.log("vaultId:", vaultId);
-    console.log("vaultKey:", vaultKey);
-    console.log("previewType:", previewType);
-
+    
     const token = localStorage.getItem("token") || sessionStorage.getItem("token");
 
     // 1. Get download URL
@@ -643,40 +638,40 @@ export default function FilePreviewModal({
       `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/download`,
       { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
     );
-    console.log("dlRes status:", dlRes.status);
+    //console.log("dlRes status:", dlRes.status);
     const dlData = await dlRes.json();
-    console.log("dlData:", dlData);
+    //console.log("dlData:", dlData);
 
     if (!dlRes.ok) throw new Error("Could not get download URL");
     const { downloadUrl, localPath } = dlData;
 
     // 2. Fetch raw bytes
     const fileRes = await fetch(downloadUrl || localPath);
-    console.log("fileRes status:", fileRes.status);
-    console.log("fileRes ok:", fileRes.ok);
+    //console.log("fileRes status:", fileRes.status);
+    //console.log("fileRes ok:", fileRes.ok);
     
     const buf = await fileRes.arrayBuffer();
-    console.log("buf byteLength:", buf.byteLength);
+    //console.log("buf byteLength:", buf.byteLength);
 
 const firstBytes = new Uint8Array(buf).slice(0, 8);
-console.log("first bytes:", Array.from(firstBytes));
+//console.log("first bytes:", Array.from(firstBytes));
 
     // 3. Decrypt if needed
     let finalBlob;
     if (file.isEncrypted) {
-      console.log("vaultKey present:", !!vaultKey);
-      if (!vaultKey) throw new Error("Vault is locked.");
+      //console.log("vaultKey present:", !!vaultKey);
+      if (!vaultKey) throw new Error("Vault is locked. Open Upload with or without Folder to Open the vault and preview files.");
       finalBlob = await decryptToBlob(buf, vaultKey, mimeType);
-      console.log("decrypted blob size:", finalBlob.size);
+      //console.log("decrypted blob size:", finalBlob.size);
     } else {
       finalBlob = new Blob([buf], { type: mimeType });
-      console.log("plain blob size:", finalBlob.size);
+      //console.log("plain blob size:", finalBlob.size);
     }
 
     if (!revoked) {
       setBlob(finalBlob);
       setBlobUrl(URL.createObjectURL(finalBlob));
-      console.log("=== PREVIEW SUCCESS ===");
+      //console.log("=== PREVIEW SUCCESS ===");
     }
   } catch(e) {
     console.error("=== PREVIEW ERROR ===", e);

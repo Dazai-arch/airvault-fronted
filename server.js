@@ -1950,118 +1950,95 @@ const isShareableFile = (fileName = "") =>
 
 // ─── Email template ───────────────────────────────────────────────────────────
 // Clean, table-based layout that works in all email clients (Gmail, Outlook, Apple Mail).
-// File is sent as an attachment — no CTA button needed.
 const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSizeLabel, message, isEncrypted }) => `
 <!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>${escHtml(senderName)} shared a file with you via AirVault</title>
+  <title>Shared File</title>
 </head>
-<body style="margin:0;padding:0;background-color:#060d1a;font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif;">
-
-  <!-- Outer wrapper -->
-  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#060d1a;padding:40px 16px 60px;">
+<body style="margin:0;padding:0;background-color:#0a0f1e;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0a0f1e;padding:40px 16px;">
     <tr>
       <td align="center">
-        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:580px;">
 
-          <!-- ═══ HEADER ═══ -->
+          <!-- HEADER -->
           <tr>
-            <td style="background:linear-gradient(135deg,#0d1b33 0%,#0f172a 100%);border-radius:20px 20px 0 0;border:1px solid #1e3a5f;border-bottom:none;padding:36px 40px 32px;text-align:center;">
-
-              <!-- Logo -->
+            <td style="background:linear-gradient(135deg,#0d1f3c 0%,#0a1628 100%);border-radius:20px 20px 0 0;border:1px solid #1a3a6b;border-bottom:none;padding:0;overflow:hidden;">
+              <!-- Gradient top bar -->
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td align="center" style="padding-bottom:28px;">
-                    <table cellpadding="0" cellspacing="0" border="0">
+                  <td style="height:4px;background:linear-gradient(90deg,#06b6d4,#3b82f6,#8b5cf6);font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+              </table>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="padding:40px 40px 32px;">
+                <tr>
+                  <td align="center">
+                    <!-- Logo -->
+                    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:28px;">
                       <tr>
-                        <td style="background:linear-gradient(135deg,#06b6d4,#3b82f6);border-radius:12px;width:40px;height:40px;text-align:center;vertical-align:middle;font-size:20px;box-shadow:0 6px 24px rgba(6,182,212,0.35);">
+                        <td style="background:linear-gradient(135deg,#06b6d4,#3b82f6);border-radius:14px;width:48px;height:48px;text-align:center;vertical-align:middle;font-size:22px;">
                           🔒
                         </td>
-                        <td style="padding-left:10px;font-size:22px;font-weight:800;letter-spacing:-0.5px;color:#06b6d4;vertical-align:middle;">
+                        <td style="padding-left:12px;font-size:24px;font-weight:800;color:#06b6d4;vertical-align:middle;letter-spacing:-0.5px;">
                           AirVault
+                        </td>
+                      </tr>
+                    </table>
+                    <!-- Avatar -->
+                    <table cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center">
+                          <div style="width:68px;height:68px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#6366f1);display:inline-block;text-align:center;line-height:68px;font-size:28px;font-weight:700;color:#ffffff;border:3px solid rgba(6,182,212,0.4);">
+                            ${(senderName || "?")[0].toUpperCase()}
+                          </div>
+                          <p style="margin:12px 0 4px;font-size:20px;font-weight:700;color:#f1f5f9;">${escHtml(senderName)}</p>
+                          <p style="margin:0 0 6px;font-size:13px;color:#64748b;">${escHtml(senderEmail)}</p>
+                          <p style="margin:0;font-size:15px;color:#94a3b8;">shared a file with you</p>
                         </td>
                       </tr>
                     </table>
                   </td>
                 </tr>
               </table>
-
-              <!-- Avatar -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td align="center" style="padding-bottom:14px;">
-                    <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#0ea5e9,#6366f1);display:inline-block;line-height:64px;font-size:26px;font-weight:700;color:white;text-align:center;border:3px solid rgba(6,182,212,0.3);">
-                      ${(senderName || "?")[0].toUpperCase()}
-                    </div>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="font-size:18px;font-weight:700;color:#f1f5f9;padding-bottom:4px;">
-                    ${escHtml(senderName)}
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="font-size:12px;color:#475569;padding-bottom:8px;">
-                    ${escHtml(senderEmail)}
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="font-size:14px;color:#64748b;">
-                    shared a file with you
-                  </td>
-                </tr>
-              </table>
-
             </td>
           </tr>
 
-          <!-- ═══ BODY ═══ -->
+          <!-- BODY -->
           <tr>
-            <td style="background:#0f172a;border:1px solid #1e3a5f;border-top:none;border-bottom:none;padding:32px 40px;">
+            <td style="background:#0d1626;border:1px solid #1a3a6b;border-top:none;border-bottom:none;padding:32px 40px;">
 
-              <!-- File info card -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg,#1e293b,#0f1f36);border:1px solid #1e3a5f;border-radius:14px;margin-bottom:28px;overflow:hidden;">
-                <!-- Top accent bar -->
+              <!-- File card -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:linear-gradient(135deg,#0f2340,#0d1a2e);border:1px solid #1e3a6b;border-radius:16px;overflow:hidden;margin-bottom:24px;">
                 <tr>
-                  <td style="height:3px;background:linear-gradient(90deg,#06b6d4,#3b82f6,#818cf8);border-radius:14px 14px 0 0;font-size:0;line-height:0;">&nbsp;</td>
+                  <td style="height:3px;background:linear-gradient(90deg,#06b6d4,#3b82f6);font-size:0;line-height:0;">&nbsp;</td>
                 </tr>
                 <tr>
-                  <td style="padding:20px 24px;">
+                  <td style="padding:24px;">
                     <table width="100%" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <!-- Icon -->
-                        <td width="56" valign="middle" style="padding-right:16px;">
-                          <div style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,#0ea5e9,#6366f1);text-align:center;line-height:52px;font-size:24px;box-shadow:0 4px 16px rgba(14,165,233,0.3);">
-                            ${fileTypeEmoji(fileType)}
-                          </div>
-                        </td>
-                        <!-- File details -->
-                        <td valign="middle">
-                          <div style="font-size:15px;font-weight:700;color:#f1f5f9;margin-bottom:8px;word-break:break-all;">
-                            ${escHtml(fileName)}
-                          </div>
+                        <td width="60" valign="middle" style="padding-right:16px;">
                           <table cellpadding="0" cellspacing="0" border="0">
                             <tr>
-                              <td style="padding-right:6px;">
-                                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#06b6d4;background:rgba(6,182,212,0.12);border:1px solid rgba(6,182,212,0.25);border-radius:6px;padding:3px 8px;">
-                                  ${escHtml(fileType || "File")}
-                                </span>
+                              <td style="width:56px;height:56px;background:linear-gradient(135deg,#0ea5e9,#6366f1);border-radius:14px;text-align:center;vertical-align:middle;font-size:26px;">
+                                ${fileTypeEmoji(fileType)}
                               </td>
-                              <td style="padding-right:6px;">
-                                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#818cf8;background:rgba(99,102,241,0.10);border:1px solid rgba(99,102,241,0.25);border-radius:6px;padding:3px 8px;">
-                                  ${escHtml(fileSizeLabel)}
-                                </span>
+                            </tr>
+                          </table>
+                        </td>
+                        <td valign="middle">
+                          <p style="margin:0 0 10px;font-size:16px;font-weight:700;color:#f1f5f9;word-break:break-all;">${escHtml(fileName)}</p>
+                          <table cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td style="padding-right:8px;">
+                                <span style="display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#06b6d4;background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.3);border-radius:6px;padding:4px 10px;">${escHtml(fileType || "File")}</span>
                               </td>
-                              ${isEncrypted ? `
-                              <td>
-                                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#34d399;background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.25);border-radius:6px;padding:3px 8px;">
-                                  🔒 Encrypted
-                                </span>
-                              </td>` : ""}
+                              <td style="padding-right:8px;">
+                                <span style="display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#a78bfa;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.3);border-radius:6px;padding:4px 10px;">${escHtml(fileSizeLabel)}</span>
+                              </td>
+                              ${isEncrypted ? `<td><span style="display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#34d399;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.3);border-radius:6px;padding:4px 10px;">🔒 Encrypted</span></td>` : ""}
                             </tr>
                           </table>
                         </td>
@@ -2072,32 +2049,38 @@ const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSize
               </table>
 
               <!-- Attachment notice -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.2);border-radius:12px;margin-bottom:${message ? "20px" : "0"};">
-                <tr>
-                  <td style="padding:16px 20px;">
-                    <table cellpadding="0" cellspacing="0" border="0">
-                      <tr>
-                        <td style="font-size:20px;padding-right:12px;vertical-align:middle;">📎</td>
-                        <td style="vertical-align:middle;">
-                          <div style="font-size:13px;font-weight:700;color:#06b6d4;margin-bottom:2px;">File attached to this email</div>
-                          <div style="font-size:12px;color:#475569;line-height:1.5;">
-                            The file is attached below. You can open or save it directly from your email client.
-                            ${isEncrypted ? "Note: this file is zero-knowledge encrypted — you'll need AirVault to decrypt it." : ""}
-                          </div>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:14px;margin-bottom:${message ? "24px" : "0"};">
+  <tr>
+    <td style="padding:18px 22px;">
+      <table cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td style="font-size:22px;padding-right:14px;vertical-align:middle;">
+            ${isEncrypted ? "🔐" : "📎"}
+          </td>
+          <td valign="middle">
+            <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:${isEncrypted ? "#f59e0b" : "#06b6d4"};">
+              ${isEncrypted ? "Encrypted file — requires AirVault to open" : "File attached to this email"}
+            </p>
+            <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
+              ${isEncrypted 
+                ? "This file is end-to-end encrypted. To open it, the sender must share access with you through AirVault directly. The attachment cannot be opened without the encryption key."
+                : "The file is attached below. Open or save it directly from your email client."
+              }
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
 
-              ${message ? `
               <!-- Personal message -->
-              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px;">
+              ${message ? `
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:rgba(15,35,64,0.6);border:1px solid #1a3a6b;border-left:3px solid #06b6d4;border-radius:12px;">
                 <tr>
-                  <td style="background:rgba(30,58,95,0.35);border:1px solid #1e3a5f;border-left:3px solid #06b6d4;border-radius:10px;padding:16px 20px;">
-                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#334155;margin-bottom:8px;">Personal message</div>
-                    <div style="font-size:14px;color:#94a3b8;line-height:1.65;font-style:italic;">"${escHtml(message)}"</div>
+                  <td style="padding:18px 22px;">
+                    <p style="margin:0 0 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#334155;">Personal Message</p>
+                    <p style="margin:0;font-size:14px;color:#94a3b8;line-height:1.7;font-style:italic;">"${escHtml(message)}"</p>
                   </td>
                 </tr>
               </table>
@@ -2106,19 +2089,27 @@ const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSize
             </td>
           </tr>
 
-          <!-- ═══ FOOTER ═══ -->
+          <!-- FOOTER -->
           <tr>
-            <td style="background:#060d1a;border:1px solid #1e3a5f;border-top:none;border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;">
-              <div style="font-size:16px;font-weight:800;color:#1e3a5f;margin-bottom:12px;">🔒 AirVault</div>
-              <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr><td style="height:1px;background:#0f1f36;font-size:0;line-height:0;">&nbsp;</td></tr>
+            <td style="background:#070d1a;border:1px solid #1a3a6b;border-top:1px solid #0f2040;border-radius:0 0 20px 20px;padding:28px 40px;text-align:center;">
+              <table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 16px;">
+                <tr>
+                  <td style="background:linear-gradient(135deg,#06b6d4,#3b82f6);border-radius:10px;width:32px;height:32px;text-align:center;vertical-align:middle;font-size:16px;">🔒</td>
+                  <td style="padding-left:8px;font-size:16px;font-weight:800;color:#1e3a5f;vertical-align:middle;">AirVault</td>
+                </tr>
               </table>
-              <p style="font-size:11px;color:#1e3a5f;line-height:1.7;margin:12px 0 0;">
-                Sent via AirVault · Zero-knowledge encrypted file storage<br/>
-                <a href="https://airvault.me" style="color:#0ea5e9;text-decoration:none;">airvault.me</a> ·
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td style="height:1px;background:#0f2040;font-size:0;line-height:0;">&nbsp;</td></tr>
+              </table>
+              <p style="margin:16px 0 4px;font-size:12px;color:#1e3a5f;line-height:1.7;">
+                Sent via AirVault · Zero-knowledge encrypted file storage
+              </p>
+              <p style="margin:0 0 8px;font-size:12px;color:#1e3a5f;">
+                <a href="https://airvault.me" style="color:#0ea5e9;text-decoration:none;">airvault.me</a>
+                &nbsp;·&nbsp;
                 <a href="https://airvault.me/privacy" style="color:#0ea5e9;text-decoration:none;">Privacy Policy</a>
               </p>
-              <p style="font-size:11px;color:#1e293b;margin-top:10px;">© 2026 AirVault. All rights reserved.</p>
+              <p style="margin:0;font-size:11px;color:#0f1e36;">© 2026 AirVault. All rights reserved.</p>
             </td>
           </tr>
 
@@ -2126,7 +2117,6 @@ const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSize
       </td>
     </tr>
   </table>
-
 </body>
 </html>
 `;
@@ -2267,118 +2257,6 @@ fileBuffer = Buffer.from(await resp.arrayBuffer());
     }
   }
 );
-
-// ============================================================
-// POST /api/vaults/:vaultId/files/:fileId/share
-// Body: { recipients: string[], message?: string }
-// ============================================================
-app.post(
-  "/api/vaults/:vaultId/files/:fileId/share",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { vaultId, fileId }     = req.params;
-      const { recipients, message } = req.body;
-
-      // ── Validate recipients
-      if (!Array.isArray(recipients) || recipients.length === 0) {
-        return res.status(400).json({ message: "At least one recipient is required" });
-      }
-      if (recipients.length > 10) {
-        return res.status(400).json({ message: "Maximum 10 recipients per share" });
-      }
-      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const badEmails = recipients.filter(e => !emailRe.test(e));
-      if (badEmails.length) {
-        return res.status(400).json({ message: `Invalid email address(es): ${badEmails.join(", ")}` });
-      }
-
-      // ── Fetch file + vault (ownership check)
-      const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-      if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-      const file = await VaultFile.findOne({ _id: fileId, vaultId, userId: req.user.userId, isDeleted: false });
-      if (!file) return res.status(404).json({ message: "File not found" });
-
-      // ── Server-side shareability check
-      if (!isShareableFile(file.originalName)) {
-        return res.status(400).json({
-          message: `Files with extension .${file.originalName.split(".").pop()} cannot be shared via email for security reasons.`,
-          code: "NOT_SHAREABLE",
-        });
-      }
-
-      // ── Sender info
-      const sender = await User.findById(req.user.userId).select("fullName email");
-      const senderName  = sender?.fullName  || "An AirVault user";
-      const senderEmail = sender?.email     || req.user.email;
-
-      // ── Build share link (7-day JWT)
-      const shareToken = jwt.sign(
-        { fileId, vaultId, userId: req.user.userId },
-        process.env.JWT_SECRET || "your-secret-key",
-        { expiresIn: "7d" }
-      );
-      const shareLink = `${process.env.FRONTEND_URL || "http://localhost:5173"}/share/${shareToken}`;
-
-      // ── Persist shared=true flag
-      await VaultFile.findByIdAndUpdate(fileId, { shared: true });
-
-      // ── Send emails (sequentially to respect rate limits)
-      const fileType     = getMimeLabel(file.mimeType, file.originalName);
-      const fileSizeLabel = formatBytes(file.size);
-      const htmlBody     = buildShareEmail({
-        senderName, senderEmail,
-        fileName:    file.originalName,
-        fileType,
-        fileSizeLabel,
-        shareLink,
-        message:     message || "",
-        isEncrypted: file.isEncrypted,
-        expiresLabel: "7 days",
-      });
-
-      const sendResults = [];
-      for (const recipient of recipients) {
-        try {
-          const { data, error } = await resend.emails.send({
-            from:    "AirVault Sharing <noreply@airvault.me>",
-            to:      recipient,
-            subject: `${senderName} shared "${file.originalName}" with you`,
-            html:    htmlBody,
-          });
-          if (error) sendResults.push({ email: recipient, ok: false, error: error.message });
-          else       sendResults.push({ email: recipient, ok: true });
-        } catch (e) {
-          sendResults.push({ email: recipient, ok: false, error: e.message });
-        }
-      }
-
-      const allOk    = sendResults.every(r => r.ok);
-      const anyOk    = sendResults.some(r => r.ok);
-      const failList = sendResults.filter(r => !r.ok).map(r => r.email);
-
-      await createAuditLog(req.user.userId, senderEmail, "FILE_SHARED", req, anyOk);
-
-      if (!anyOk) {
-        return res.status(502).json({ message: "Failed to send share emails. Please try again.", results: sendResults });
-      }
-
-      return res.status(200).json({
-        message: allOk
-          ? `File shared successfully with ${recipients.length} recipient(s).`
-          : `Shared with some recipients. Failed for: ${failList.join(", ")}`,
-        results: sendResults,
-        shareLink,
-      });
-
-    } catch (error) {
-      console.error("Share File Error:", error);
-      res.status(500).json({ message: "Server error during file sharing" });
-    }
-  }
-);
-
 
 const folderToJSON = (f) => ({
   id:         f.folderId,
@@ -3480,20 +3358,38 @@ const checkDownloadPermission = async (req, res, next) => {
 // HELPER — vault-scoped audit log creator
 // ════════════════════════════════════════════════════════════
 
+const geoip = require("geoip-lite");
+
+function getLocationFromIP(ip) {
+  if (!ip) return "Unknown";
+  const cleanIp = ip.replace(/^::ffff:/, "");
+  if (cleanIp === "::1" || cleanIp === "127.0.0.1") return "Local";
+  const geo = geoip.lookup(cleanIp);
+  if (!geo) return "Unknown";
+  return [geo.city, geo.region, geo.country].filter(Boolean).join(", ") || "Unknown";
+}
+
 const createVaultAuditLog = async (vaultId, userId, email, action, req, fileInfo = null, status = "success") => {
   try {
-    const { device, browser, os } = getDeviceInfo(req); // reuse your existing helper
+    const { device, browser, os } = getDeviceInfo(req);
+
+    const rawIp = req.headers["x-forwarded-for"]?.split(",")[0]?.trim()
+               || req.headers["x-real-ip"]
+               || req.ip
+               || req.connection?.remoteAddress
+               || "Unknown";
+
     await VaultAuditLog.create({
       vaultId,
-      userId:   userId  || null,
-      email:    email   || "system",
+      userId:    userId  || null,
+      email:     email   || "system",
       action,
-      fileId:   fileInfo?.id   || null,
-      fileName: fileInfo?.name || null,
-      ipAddress: req.ip || req.connection?.remoteAddress,
+      fileId:    fileInfo?.id   || null,
+      fileName:  fileInfo?.name || null,
+      ipAddress: rawIp,
       userAgent: req.headers["user-agent"],
       device, browser, os,
-      location: "Unknown", // integrate a geo-IP lib here if desired
+      location:  getLocationFromIP(rawIp),
       status,
     });
   } catch (e) {
@@ -4064,7 +3960,7 @@ app.get("/api/vaults/:vaultId/access-log", authenticateToken, checkVaultAccess("
     const status = req.query.status  || null;
     const search = req.query.search  || null;
 
-    const query = { vaultId };
+    const query = { vaultId: new mongoose.Types.ObjectId(vaultId) };
     if (action && action !== "All") query.action = action;
     if (status && status !== "All") query.status = status;
     if (search) {
@@ -4170,7 +4066,8 @@ app.get("/api/vaults/:vaultId/access-log/export", authenticateToken, checkVaultA
   try {
     const { vaultId } = req.params;
 
-    const logs = await VaultAuditLog.find({ vaultId })
+    // In export route:
+    const logs = await VaultAuditLog.find({ vaultId: new mongoose.Types.ObjectId(vaultId) })
       .sort({ timestamp: -1 })
       .limit(5000)
       .lean();

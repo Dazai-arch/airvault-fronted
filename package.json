@@ -26,6 +26,7 @@
     "express-session": "^1.18.2",
     "framer-motion": "^12.34.1",
     "fs": "^0.0.1-security",
+    "geoip-lite": "^1.4.10",
     "helmet": "^8.1.0",
     "https-proxy-agent": "^7.0.6",
     "jsonwebtoken": "^9.0.3",
