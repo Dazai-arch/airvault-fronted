@@ -2002,43 +2002,6 @@ app.patch("/api/vaults/:vaultId/files/:fileId/view", authenticateToken, async (r
   }
 });
 
-
-// ════════════════════════════════════════════════════════════
-// 10. ZK Salt routes (from server_zk_additions.js)
-// ════════════════════════════════════════════════════════════
-
-// POST /api/vaults/:vaultId/zk-salt  — persist new salt after first encryption
-app.post("/api/vaults/:vaultId/zk-salt", authenticateToken, async (req, res) => {
-  try {
-    const { vaultId } = req.params;
-    const { saltB64 }  = req.body;
-    if (!saltB64) return res.status(400).json({ message: "saltB64 is required" });
-
-    await ZKSalt.findOneAndUpdate(
-      { vaultId },
-      { vaultId, userId: req.user.userId, saltB64, updatedAt: new Date() },
-      { upsert: true, new: true }
-    );
-    res.status(200).json({ message: "Salt stored" });
-  } catch (err) {
-    console.error("ZK Salt Store Error:", err);
-    res.status(500).json({ message: "Server error storing ZK salt" });
-  }
-});
-
-// GET /api/vaults/:vaultId/zk-salt  — fetch salt for subsequent unlocks
-app.get("/api/vaults/:vaultId/zk-salt", authenticateToken, async (req, res) => {
-  try {
-    const { vaultId } = req.params;
-    const record = await ZKSalt.findOne({ vaultId });
-    if (!record) return res.status(404).json({ message: "No ZK salt found" });
-    res.status(200).json({ saltB64: record.saltB64 });
-  } catch (err) {
-    console.error("ZK Salt Fetch Error:", err);
-    res.status(500).json({ message: "Server error fetching ZK salt" });
-  }
-});
-
 const escHtml = (str = "") =>
   String(str)
     .replace(/&/g, "&amp;")
