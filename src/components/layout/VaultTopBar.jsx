@@ -10,14 +10,6 @@ const notifs = [
   { id: 3, title: "Storage warning", desc: "You've used 80% of your vault storage.", dot: "bg-amber-400", time: "3 hr ago" },
 ];
 
-// Z-INDEX GUIDE for this app:
-// z-30        → sidebar backdrop
-// z-[48]      → sidebar panel
-// z-[49]      → (unused, reserved)
-// z-50        → top bar header
-// z-[51]      → hamburger toggle button (must be above header)
-// z-[60]+     → modals / dialogs (must be above hamburger)
-
 const VaultTopBar = () => {
   const { isDark, toggleTheme } = useTheme();
   const { activeVault } = useVault();
@@ -29,11 +21,8 @@ const VaultTopBar = () => {
         ? "bg-slate-900/95 border-slate-700/50 shadow-lg shadow-black/10"
         : "bg-white/95 border-gray-200 shadow-lg shadow-gray-200/50"
     }`}>
-      {/* 
-        On mobile we add pl-14 so content doesn't sit under the hamburger button
-        (fixed at left-3, ~44px wide). On desktop the sidebar handles its own space.
-      */}
-      <div className="px-3 sm:px-6 pl-14 sm:pl-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+      {/* pl-16 on all sizes so content clears the always-visible 60px sidebar */}
+      <div className="pl-16 pr-3 sm:pr-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
 
         {/* Logo */}
         <div className="flex items-center gap-2 sm:gap-3 group cursor-pointer flex-shrink-0">
@@ -126,7 +115,7 @@ const VaultTopBar = () => {
             }`}
           >
             {isDark
-              ? <Sun className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 group-hover:rotate-90 transition-transform duration-500" />
+              ? <Sun  className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400 group-hover:rotate-90 transition-transform duration-500" />
               : <Moon className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 group-hover:-rotate-12 transition-transform duration-500" />
             }
           </button>

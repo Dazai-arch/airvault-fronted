@@ -118,10 +118,7 @@ const HamburgerMenu = () => {
     },
   ];
 
-  // ── Sidebar width logic ────────────────────────────────────
-  // Both mobile & desktop: 60px collapsed → 220px expanded
-  // On mobile it's always visible at 60px, expands on icon tap
-  // On desktop it expands on hover
+  // 60px collapsed → 220px expanded on both mobile & desktop
   const sidebarWidth = isExpanded ? 220 : 60;
 
   return (
@@ -141,13 +138,13 @@ const HamburgerMenu = () => {
         )}
       </AnimatePresence>
 
-      {/* ── Sidebar — always visible, z-40 ─────────────────── */}
+      {/* ── Sidebar — always visible at 60px ───────────────── */}
       <motion.aside
         ref={sidebarRef}
         initial={false}
         animate={{ width: sidebarWidth }}
         transition={{ type: "spring", damping: 24, stiffness: 280 }}
-        // Desktop: hover to expand/collapse
+        // Desktop: hover expands/collapses. Mobile: icon click handles it.
         onMouseEnter={!isMobile ? expand   : undefined}
         onMouseLeave={!isMobile ? collapse : undefined}
         style={{ backdropFilter: "blur(20px)" }}
@@ -158,8 +155,12 @@ const HamburgerMenu = () => {
         {/* Top accent line */}
         <div className="h-[2px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 flex-shrink-0" />
 
-        {/* Header — clicking the Menu/X icon toggles on mobile */}
+        {/* Header with Menu/X toggle icon */}
         <div className={`flex items-center px-3 py-3 border-b flex-shrink-0 ${isDark ? "border-slate-700/50" : "border-gray-200"}`}>
+          {/* 
+            Mobile  → clicking toggles expand/collapse
+            Desktop → just a visual icon (hover handles it)
+          */}
           <button
             onClick={() => isMobile ? (isExpanded ? collapse() : expand()) : undefined}
             className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl transition-colors duration-200 ${
@@ -167,7 +168,7 @@ const HamburgerMenu = () => {
             } ${isDark ? "text-cyan-400 hover:bg-slate-800" : "text-cyan-600 hover:bg-gray-100"}`}
           >
             {isMobile && isExpanded
-              ? <X className="w-[18px] h-[18px]" />
+              ? <X    className="w-[18px] h-[18px]" />
               : <Menu className="w-[18px] h-[18px]" />
             }
           </button>
@@ -201,7 +202,6 @@ const HamburgerMenu = () => {
                 title={!isExpanded ? item.label : undefined}
                 onClick={() => {
                   if (item.hasSubmenu) {
-                    // On mobile, open the sidebar first if collapsed
                     if (isMobile && !isExpanded) { expand(); return; }
                     setExpandedSubmenu(expandedSubmenu === item.id ? null : item.id);
                   } else {
