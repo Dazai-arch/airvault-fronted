@@ -186,21 +186,30 @@ export async function resolveVaultKey(vaultId, hasPassword, passphrase = null, s
     if (saltB64) {
       salt = new Uint8Array(b642buf(saltB64));
     } else {
-      // First encryption — generate salt; caller must persist saltB64 to server
       salt       = crypto.getRandomValues(new Uint8Array(SALT_LEN));
       newSaltB64 = buf2b64(salt.buffer);
     }
     const key = await deriveKey(passphrase, salt);
-    return { key, saltB64: newSaltB64 };
+    return { key, saltB64: newSaltB64, keyHex: null };
   } else {
-    // Passwordless — use a random key persisted in sessionStorage
-    let hex = getVaultKeyHex(vaultId);
+    // Check localStorage first (survives re-login), then sessionStorage
+    const lsKey = `zk_vault_key_${vaultId}`;
+    let hex = localStorage.getItem(lsKey) || getVaultKeyHex(vaultId);
+    
+    let isNew = false;
     if (!hex) {
       const { key, rawHex } = await generateRandomKey();
-      storeVaultKeyHex(vaultId, rawHex);
-      return { key, saltB64: null };
+      hex = rawHex;
+      isNew = true;
+      // Store in both
+      localStorage.setItem(lsKey, hex);
+      storeVaultKeyHex(vaultId, hex);
+      return { key, saltB64: null, keyHex: hex, isNewKey: true };
     }
+    
+    // Restore into sessionStorage if missing
+    storeVaultKeyHex(vaultId, hex);
     const key = await importKeyFromHex(hex);
-    return { key, saltB64: null };
+    return { key, saltB64: null, keyHex: hex, isNewKey: false };
   }
 }

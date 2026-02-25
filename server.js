@@ -4335,24 +4335,6 @@ app.get("/api/vaults/:vaultId/access-log/export", authenticateToken, checkVaultA
 });
 
 
-// ════════════════════════════════════════════════════════════
-// EXISTING ROUTE PATCHES
-// Wrap existing file routes to also log to VaultAuditLog
-// and to check shared permissions.
-// ════════════════════════════════════════════════════════════
-
-// ── 13. SHARED-AWARE FILE LIST ───────────────────────────────────────────────
-// This replaces the GET /api/vaults/:vaultId/files route for shared members.
-// It ensures members can only see files if they have view permission.
-//
-// NOTE: Replace (or wrap) your existing route with checkVaultAccess("viewer"):
-//
-//   app.get("/api/vaults/:vaultId/files", authenticateToken, checkVaultAccess("viewer"), async ...
-//
-// Then inside, replace `userId: req.user.userId` in the Vault.findOne with:
-//   Allow if vault.userId == req.user.userId OR member status == active
-
-
 // ── 14. COPY-LINK / INVITE LINK STATUS ──────────────────────────────────────
 // GET /api/vaults/:vaultId/invite-link
 // Returns the current invite link. Owner only.
@@ -4388,6 +4370,42 @@ function timeAgo(date) {
   return `${Math.floor(seconds / 86400)} days ago`;
 }
 
+// Store raw key for passwordless vaults (key is already random — no passphrase needed)
+app.post("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
+  try {
+    const { vaultId } = req.params;
+    const { keyHex } = req.body;
+
+    if (!keyHex) return res.status(400).json({ message: "keyHex is required" });
+
+    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
+    if (!vault) return res.status(404).json({ message: "Vault not found" });
+
+    // Reuse ZKSalt model — store keyHex in saltB64 field, or add a separate field
+    await ZKSalt.findOneAndUpdate(
+      { vaultId },
+      { vaultId, userId: req.user.userId, saltB64: keyHex, updatedAt: new Date() },
+      { upsert: true, new: true }
+    );
+
+    res.status(200).json({ message: "Key stored" });
+  } catch (err) {
+    console.error("ZK Key Store Error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// Get raw key for passwordless vaults
+app.get("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
+  try {
+    const { vaultId } = req.params;
+    const record = await ZKSalt.findOne({ vaultId });
+    if (!record) return res.status(404).json({ message: "No key found" });
+    res.status(200).json({ keyHex: record.saltB64 });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 // LOGOUT
 app.post("/api/auth/logout", authenticateToken, async (req, res) => {
