@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Shield, Bell, Sun, Moon, LogOut } from "lucide-react";
+import { Shield, Bell, Sun, Moon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "../../context/ThemeContext";
 import { useVault } from "../../context/VaultContext";
@@ -21,7 +21,12 @@ const VaultTopBar = () => {
         ? "bg-slate-900/95 border-slate-700/50 shadow-lg shadow-black/10"
         : "bg-white/95 border-gray-200 shadow-lg shadow-gray-200/50"
     }`}>
-      <div className="px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+      {/* 
+        On mobile (md:) we add pl-14 so the logo doesn't sit under 
+        the hamburger toggle button (which is fixed at left-3, ~44px wide).
+        On desktop the sidebar is always visible so no offset needed.
+      */}
+      <div className="px-3 sm:px-6 pl-14 sm:pl-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
 
         {/* Logo */}
         <div className="flex items-center gap-2 sm:gap-3 group cursor-pointer flex-shrink-0">

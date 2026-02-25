@@ -62,48 +62,7 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
   if (!token) throw new Error("Not authenticated");
 
-  const { key, saltB64: newSalt, keyHex, isNewKey } = await resolveVaultKey(vaultId, hasPassword, passphrase, saltB64);
-  _keyCache.set(vaultId, key);
-
-  // Password vault — save PBKDF2 salt to DB on first use
-  if (newSalt) {
-    const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({ saltB64: newSalt }),
-    });
-    if (!saltRes.ok) {
-      const err = await saltRes.json().catch(() => ({}));
-      throw new Error(`Failed to save ZK salt: ${err.message || saltRes.status}`);
-    }
-  }
-
-  // Passwordless vault — save raw key hex to DB on first generation
-  if (!hasPassword && keyHex)  {
-    const keyRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({ keyHex }),
-    });
-    if (!keyRes.ok) {
-      console.warn("Could not persist passwordless vault key to backend");
-    }
-  }
-
-  return key;
-}
-
-export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, saltB64 = null) {
-  const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-  if (!token) throw new Error("Not authenticated");
-
-  const { key, saltB64: newSalt, keyHex, isNewKey } = await resolveVaultKey(
+  const { key, saltB64: newSalt, keyHex } = await resolveVaultKey(
     vaultId, hasPassword, passphrase, saltB64
   );
   _keyCache.set(vaultId, key);
@@ -112,10 +71,7 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
   if (newSalt) {
     const saltRes = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-salt`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ saltB64: newSalt }),
     });
     if (!saltRes.ok) {
@@ -124,17 +80,13 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
     }
   }
 
-  // Passwordless vault — ALWAYS upsert key to DB (not just on first creation)
-  // DB is the source of truth; localStorage is just a cache
+  // Passwordless vault — ALWAYS upsert key to DB on every unlock
   if (!hasPassword && keyHex) {
     fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify({ keyHex }),
-    }).catch(e => console.warn("Could not persist vault key to backend:", e));
+    }).catch(e => console.warn("Could not persist vault key:", e));
   }
 
   return key;
@@ -145,25 +97,19 @@ export async function restoreVaultKey(vaultId, hasPassword, passphrase = null, s
   if (!token) throw new Error("Not authenticated");
 
   if (!hasPassword) {
-    // ALWAYS fetch from DB first — localStorage may be cleared or stale
     try {
       const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
         headers: { "Authorization": `Bearer ${token}` },
       });
       if (res.ok) {
         const { keyHex } = await res.json();
-        // Restore to localStorage so resolveVaultKey finds it
-        // and does NOT generate a new key
         localStorage.setItem(`zk_vault_key_${vaultId}`, keyHex);
       }
-      // If 404 — brand new vault, no key in DB yet, resolveVaultKey
-      // will generate a new one and unlockVaultKey will save it
     } catch (e) {
-      console.warn("Could not fetch key from backend, falling back to localStorage:", e);
+      console.warn("Could not fetch key from backend:", e);
     }
   }
 
-  // Now resolve — localStorage is guaranteed to have the key if DB had it
   return unlockVaultKey(vaultId, hasPassword, passphrase, saltB64);
 }
 

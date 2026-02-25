@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Home, FileText, Upload, FolderPlus, FileSearch, Share2,
-  Settings, LogOut, ChevronRight, Plus, X, Shield, Menu,
+  Settings, LogOut, ChevronRight, Plus, Menu, X,
   ShieldCheck, Folder,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,38 +13,41 @@ const HamburgerMenu = () => {
   const [isExpanded,      setIsExpanded]      = useState(false);
   const [expandedSubmenu, setExpandedSubmenu] = useState(null);
   const [isMobile,        setIsMobile]        = useState(false);
-  const navigate = useNavigate();
+  const sidebarRef = useRef(null);
+  const navigate   = useNavigate();
   const { isDark }      = useTheme();
   const { activeVault } = useVault();
 
-  // ── Fix 2: detect mobile ──────────────────────────────────────────────────
+  // ── Detect mobile ──────────────────────────────────────────
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    setIsMobile(mq.matches);
-    const handler = (e) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Close sidebar when clicking outside on mobile
-  const sidebarRef = useRef(null);
+  // ── Close on outside tap (mobile only) ────────────────────
   useEffect(() => {
-    if (!isMobile) return;
-    const handleOutside = (e) => {
+    if (!isMobile || !isExpanded) return;
+    const handler = (e) => {
       if (sidebarRef.current && !sidebarRef.current.contains(e.target)) {
         collapse();
       }
     };
-    if (isExpanded) document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
+    // small delay so the open-tap doesn't immediately close it
+    const t = setTimeout(() => document.addEventListener("touchstart", handler), 50);
+    return () => { clearTimeout(t); document.removeEventListener("touchstart", handler); };
   }, [isMobile, isExpanded]);
 
-  // ── Fix 1: use fullName (matches your server's User schema) ───────────────
-  const userData    = JSON.parse(localStorage.getItem("user") || "{}");
-  const displayName = userData.fullName || userData.name || "User";
-  const userInitial = displayName.charAt(0).toUpperCase();
+  // ── Read user — handle ALL possible shapes ────────────────
+  // Server stores: { fullName, email, id, ... }
+  // Some frontends wrap it: { user: { fullName, ... } }
+  const rawUser     = JSON.parse(localStorage.getItem("user") || "{}");
+  const userData    = rawUser?.user ?? rawUser;          // unwrap if nested
+  const displayName = userData?.fullName || userData?.name || "User";
+  const userEmail   = userData?.email || "";
+  const userInitial = displayName.charAt(0).toUpperCase() || "U";
 
-  /* ── sidebar open / close ── */
   const expand = () => {
     setIsExpanded(true);
     window.dispatchEvent(new CustomEvent("sidebarToggle", { detail: { expanded: true } }));
@@ -53,6 +56,11 @@ const HamburgerMenu = () => {
     setIsExpanded(false);
     setExpandedSubmenu(null);
     window.dispatchEvent(new CustomEvent("sidebarToggle", { detail: { expanded: false } }));
+  };
+
+  const go = (path) => {
+    navigate(path);
+    if (isMobile) collapse();
   };
 
   const handleLogout = () => {
@@ -66,20 +74,20 @@ const HamburgerMenu = () => {
     {
       id: "dashboard", label: "Dashboard",
       icon: <Home className="w-[18px] h-[18px]" />, iconColor: "text-cyan-400",
-      action: () => { navigate("/vault/dashboard"); if (isMobile) collapse(); },
+      action: () => go("/vault/dashboard"),
     },
     {
       id: "accesslog", label: "Access Log",
       icon: <FileText className="w-[18px] h-[18px]" />, iconColor: "text-blue-400",
-      action: () => { navigate("/vault/accesslog"); if (isMobile) collapse(); },
+      action: () => go("/vault/accesslog"),
     },
     {
       id: "upload", label: "Upload",
       icon: <Upload className="w-[18px] h-[18px]" />, iconColor: "text-emerald-400",
       hasSubmenu: true,
       submenu: [
-        { label: "Without Folder", icon: <Upload className="w-3 h-3" />,     action: () => { navigate("/vault/fileupload"); if (isMobile) collapse(); } },
-        { label: "With Folder",    icon: <FolderPlus className="w-3 h-3" />, action: () => { navigate("/vault/fileupload"); if (isMobile) collapse(); } },
+        { label: "Without Folder", icon: <Upload className="w-3 h-3" />,     action: () => go("/vault/fileupload") },
+        { label: "With Folder",    icon: <FolderPlus className="w-3 h-3" />, action: () => go("/vault/fileupload") },
       ],
     },
     {
@@ -87,98 +95,87 @@ const HamburgerMenu = () => {
       icon: <FileSearch className="w-[18px] h-[18px]" />, iconColor: "text-indigo-400",
       hasSubmenu: true,
       submenu: [
-        { label: "File View",   icon: <FileSearch className="w-3 h-3" />, action: () => { navigate("/vault/file");   if (isMobile) collapse(); } },
-        { label: "Folder View", icon: <Folder className="w-3 h-3" />,     action: () => { navigate("/vault/folder"); if (isMobile) collapse(); } },
+        { label: "File View",   icon: <FileSearch className="w-3 h-3" />, action: () => go("/vault/file")   },
+        { label: "Folder View", icon: <Folder className="w-3 h-3" />,     action: () => go("/vault/folder") },
       ],
     },
     {
       id: "permissions", label: "Permissions",
       icon: <ShieldCheck className="w-[18px] h-[18px]" />, iconColor: "text-violet-400",
-      action: () => { navigate("/vault/permissions"); if (isMobile) collapse(); },
+      action: () => go("/vault/permissions"),
     },
     {
       id: "sharing", label: "Sharing",
       icon: <Share2 className="w-[18px] h-[18px]" />, iconColor: "text-teal-400",
-      action: () => { navigate("/vault/filesharing"); if (isMobile) collapse(); },
+      action: () => go("/vault/filesharing"),
     },
     {
       id: "details", label: "Details",
       icon: <Settings className="w-[18px] h-[18px]" />, iconColor: "text-slate-400",
-      action: () => { navigate("/vault/details"); if (isMobile) collapse(); },
+      action: () => go("/vault/details"),
     },
     {
       id: "createvault", label: "Create Vault",
       icon: <Plus className="w-[18px] h-[18px]" />, iconColor: "text-cyan-400",
-      action: () => { navigate("/createvaults"); if (isMobile) collapse(); },
+      action: () => go("/createvaults"),
     },
   ];
 
+  // ── Sidebar width logic ────────────────────────────────────
+  // Desktop: 60px collapsed → 220px on hover
+  // Mobile:  0px hidden → 220px when toggled
+  const sidebarWidth = isMobile
+    ? (isExpanded ? 220 : 0)
+    : (isExpanded ? 220 : 60);
+
   return (
     <>
-      {/* ── Mobile overlay backdrop ── */}
+      {/* ── Mobile backdrop ────────────────────────────────── */}
       <AnimatePresence>
         {isMobile && isExpanded && (
           <motion.div
+            key="backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onTouchStart={collapse}
             onClick={collapse}
-            className="fixed inset-0 z-30 bg-black/50 backdrop-blur-sm"
+            className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm"
           />
         )}
       </AnimatePresence>
 
-      {/* ── Mobile hamburger toggle button (shown in top bar area) ── */}
+      {/* ── Mobile toggle button (outside sidebar, z-70) ───── */}
       {isMobile && (
         <button
-          onClick={isExpanded ? collapse : expand}
-          className={`fixed top-4 left-4 z-[60] p-2 rounded-xl border transition-all duration-300 ${
+          onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); isExpanded ? collapse() : expand(); }}
+          onClick={(e) => { e.stopPropagation(); isExpanded ? collapse() : expand(); }}
+          className={`fixed top-[14px] left-3 z-[70] p-2 rounded-xl border shadow-lg transition-all duration-200 ${
             isDark
-              ? "bg-slate-800 border-slate-700 text-gray-300 hover:text-white"
-              : "bg-white border-gray-200 text-gray-600 hover:text-gray-900"
+              ? "bg-slate-800 border-slate-700 text-cyan-400"
+              : "bg-white border-gray-200 text-cyan-600"
           }`}
         >
-          <AnimatePresence mode="wait" initial={false}>
-            {isExpanded ? (
-              <motion.span
-                key="close"
-                initial={{ rotate: -90, opacity: 0 }}
-                animate={{ rotate: 0,   opacity: 1 }}
-                exit={{   rotate:  90,  opacity: 0 }}
-                transition={{ duration: 0.15 }}
-              >
-                <X className="w-5 h-5" />
-              </motion.span>
-            ) : (
-              <motion.span
-                key="open"
-                initial={{ rotate: 90,  opacity: 0 }}
-                animate={{ rotate: 0,   opacity: 1 }}
-                exit={{   rotate: -90,  opacity: 0 }}
-                transition={{ duration: 0.15 }}
-              >
-                <Menu className="w-5 h-5" />
-              </motion.span>
-            )}
-          </AnimatePresence>
+          {isExpanded ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       )}
 
+      {/* ── Sidebar ────────────────────────────────────────── */}
       <motion.aside
         ref={sidebarRef}
         initial={false}
-        animate={{
-          width: isExpanded ? 220 : (isMobile ? 0 : 60),
-          x: isMobile && !isExpanded ? -220 : 0,
-        }}
+        animate={{ width: sidebarWidth }}
         transition={{ type: "spring", damping: 24, stiffness: 280 }}
-        // Desktop: hover to expand | Mobile: controlled by toggle button only
         onMouseEnter={!isMobile ? expand   : undefined}
         onMouseLeave={!isMobile ? collapse : undefined}
+        style={{
+          backdropFilter: "blur(20px)",
+          pointerEvents: isMobile && !isExpanded ? "none" : "auto",
+        }}
         className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col border-r overflow-hidden transition-colors duration-300 ${
           isDark ? "bg-slate-900/95 border-slate-700/50" : "bg-white/95 border-gray-200"
         }`}
-        style={{ backdropFilter: "blur(20px)" }}
       >
         {/* Top accent line */}
         <div className="h-[2px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 flex-shrink-0" />
@@ -226,20 +223,15 @@ const HamburgerMenu = () => {
                   isExpanded ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
                 }`}
               >
-                {/* Hover bg */}
                 <span className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${
                   isDark ? "bg-slate-800/80" : "bg-gray-100"
                 }`} />
-
-                {/* Left accent bar */}
                 {isExpanded && (
                   <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-0 bg-gradient-to-b from-cyan-500 to-blue-600 rounded-full group-hover:h-3/4 transition-all duration-300" />
                 )}
-
                 <span className={`relative flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${item.iconColor}`}>
                   {item.icon}
                 </span>
-
                 <AnimatePresence>
                   {isExpanded && (
                     <motion.span
@@ -253,7 +245,6 @@ const HamburgerMenu = () => {
                     </motion.span>
                   )}
                 </AnimatePresence>
-
                 {item.hasSubmenu && isExpanded && (
                   <ChevronRight className={`relative w-3.5 h-3.5 flex-shrink-0 transition-transform duration-300 ${
                     expandedSubmenu === item.id ? "rotate-90" : ""
@@ -261,7 +252,6 @@ const HamburgerMenu = () => {
                 )}
               </motion.button>
 
-              {/* Submenu */}
               <AnimatePresence>
                 {item.hasSubmenu && expandedSubmenu === item.id && isExpanded && (
                   <motion.div
@@ -296,23 +286,18 @@ const HamburgerMenu = () => {
 
         {/* Bottom: user + logout */}
         <div className={`px-2 pb-3 pt-2 border-t flex-shrink-0 space-y-0.5 ${isDark ? "border-slate-700/50" : "border-gray-200"}`}>
-
-          {/* User profile button */}
           <motion.button
             whileTap={{ scale: 0.97 }}
             title={!isExpanded ? displayName : undefined}
-            onClick={() => { navigate("/vault/userprofile"); if (isMobile) collapse(); }}
+            onClick={() => go("/vault/userprofile")}
             className={`w-full flex items-center rounded-xl transition-all duration-200 group relative ${
               isExpanded ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
             }`}
           >
             <span className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDark ? "bg-slate-800" : "bg-gray-100"}`} />
-
-            {/* Avatar */}
             <div className="relative w-[18px] h-[18px] rounded-md bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-[9px] font-bold shadow-sm flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
               {userInitial}
             </div>
-
             <AnimatePresence>
               {isExpanded && (
                 <motion.div
@@ -321,9 +306,12 @@ const HamburgerMenu = () => {
                   className="relative flex-1 text-left min-w-0 flex items-center gap-2"
                 >
                   <div className="min-w-0 flex-1">
-                    {/* Fix 1: use fullName → displayName */}
-                    <p className={`text-xs font-semibold truncate ${isDark ? "text-white" : "text-gray-900"}`}>{displayName}</p>
-                    <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{userData.email || ""}</p>
+                    <p className={`text-xs font-semibold truncate ${isDark ? "text-white" : "text-gray-900"}`}>
+                      {displayName}
+                    </p>
+                    <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+                      {userEmail}
+                    </p>
                   </div>
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                 </motion.div>
@@ -331,7 +319,6 @@ const HamburgerMenu = () => {
             </AnimatePresence>
           </motion.button>
 
-          {/* Logout */}
           <motion.button
             whileTap={{ scale: 0.97 }}
             title={!isExpanded ? "Log Out" : undefined}
