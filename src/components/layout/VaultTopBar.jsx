@@ -10,6 +10,14 @@ const notifs = [
   { id: 3, title: "Storage warning", desc: "You've used 80% of your vault storage.", dot: "bg-amber-400", time: "3 hr ago" },
 ];
 
+// Z-INDEX GUIDE for this app:
+// z-30        → sidebar backdrop
+// z-[48]      → sidebar panel
+// z-[49]      → (unused, reserved)
+// z-50        → top bar header
+// z-[51]      → hamburger toggle button (must be above header)
+// z-[60]+     → modals / dialogs (must be above hamburger)
+
 const VaultTopBar = () => {
   const { isDark, toggleTheme } = useTheme();
   const { activeVault } = useVault();
@@ -22,9 +30,8 @@ const VaultTopBar = () => {
         : "bg-white/95 border-gray-200 shadow-lg shadow-gray-200/50"
     }`}>
       {/* 
-        On mobile (md:) we add pl-14 so the logo doesn't sit under 
-        the hamburger toggle button (which is fixed at left-3, ~44px wide).
-        On desktop the sidebar is always visible so no offset needed.
+        On mobile we add pl-14 so content doesn't sit under the hamburger button
+        (fixed at left-3, ~44px wide). On desktop the sidebar handles its own space.
       */}
       <div className="px-3 sm:px-6 pl-14 sm:pl-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
 

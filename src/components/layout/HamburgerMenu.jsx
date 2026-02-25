@@ -144,15 +144,15 @@ const HamburgerMenu = () => {
       </AnimatePresence>
 
       {/* ── Mobile toggle button
-            z-[49]: above sidebar (z-[48]) and backdrop (z-30)
-            but BELOW modals which should use z-50+           ── */}
+            z-[51]: above header (z-50) so it stays visible,
+            but modals should use z-[60]+ to appear on top    ── */}
       {isMobile && (
         <button
           onClick={(e) => {
             e.stopPropagation();
             isExpanded ? collapse() : expand();
           }}
-          className={`fixed top-[14px] left-3 z-[49] p-2 rounded-xl border shadow-lg transition-all duration-200 ${
+          className={`fixed top-[14px] left-3 z-[51] p-2 rounded-xl border shadow-lg transition-all duration-200 ${
             isDark
               ? "bg-slate-800 border-slate-700 text-cyan-400"
               : "bg-white border-gray-200 text-cyan-600"
