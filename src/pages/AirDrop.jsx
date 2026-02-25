@@ -9,7 +9,7 @@ import {
 import { useTheme } from '../context/ThemeContext';
 
 // ─── REPLACE WITH YOUR ABLY KEY (click Show on the Publish+Subscribe key) ────
-const ABLY_KEY = 'ttbE4w.7phYrQ:YOUR_FULL_KEY_HERE';
+const ABLY_KEY = process.env.VITE_ABLY_API_KEY || 'YOUR_ABLY_KEY_HERE';
 
 /* ══════════ HELPERS ══════════ */
 const getDeviceIcon = (type) =>
