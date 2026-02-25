@@ -1561,7 +1561,19 @@ app.delete("/api/vaults/:vaultId/files/:fileId", authenticateToken, async (req, 
       $inc: { fileCount: -1, totalSize: -file.size },
     });
 
+        // After file is deleted:
+await createVaultAuditLog(
+  vaultId,
+  req.user.userId,
+  req.user.email,
+  "File Deleted",
+  req,
+  { id: fileId, name: file.originalName },
+  "success"
+);
+
     res.status(200).json({ message: "File deleted successfully" });
+
   } catch (error) {
     console.error("Delete File Error:", error);
     res.status(500).json({ message: "Server error deleting file" });
@@ -1754,6 +1766,17 @@ app.post(
         isEncrypted:  isZK,
       });
 
+      // At the end of your upload route, after fileRecord is created:
+await createVaultAuditLog(
+  vaultId,
+  req.user.userId,
+  req.user.email,
+  "File Uploaded",
+  req,
+  { id: fileRecord._id, name: fileRecord.originalName },
+  "success"
+);
+
       await Vault.findByIdAndUpdate(vaultId, {
         $inc: { fileCount: 1, totalSize: req.file.size },
         lastAccessed: new Date(),
@@ -1800,6 +1823,17 @@ app.get(
       // Increment download counter
       await VaultFile.findByIdAndUpdate(fileId, { $inc: { downloads: 1 } });
       await Vault.findByIdAndUpdate(vaultId, { lastAccessed: new Date() });
+
+      // After file is found in download route:
+await createVaultAuditLog(
+  vaultId,
+  req.user.userId,
+  req.user.email,
+  "File Downloaded",
+  req,
+  { id: file._id, name: file.originalName },
+  "success"
+);
 
       if (isLocal) {
         const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);

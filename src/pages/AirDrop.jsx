@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import * as Ably from 'ably';
 import {
   Wifi, WifiOff, Upload, X, Check, Loader, File, Image as ImageIcon,
   FileText, Music, Video, Smartphone, Laptop, Tablet, Monitor, Globe,
@@ -99,13 +100,16 @@ const MY_TYPE = (() => {
 })();
 const MY_NAME = `${MY_TYPE === 'phone' ? 'Mobile' : MY_TYPE === 'tablet' ? 'Tablet' : 'Desktop'} ${MY_ID}`;
 
+/* ══════════ ABLY KEY FROM ENV ══════════ */
+const ABLY_KEY = import.meta.env.VITE_ABLY_API_KEY;
+
 /* ══════════ FEATURES ══════════ */
 const FEATURES = [
-  { Icon: Radar,       title: 'Proximity Discovery',     desc: 'Auto-finds nearby AirVault users on the same network — no usernames required.', color: 'from-violet-500 to-purple-600' },
-  { Icon: Lock,        title: 'Zero-Knowledge Transfer', desc: 'Files encrypted end-to-end. AES-GCM 256-bit. Only the recipient decrypts.',      color: 'from-purple-500 to-fuchsia-600' },
-  { Icon: QrCode,      title: 'Code Handshake',          desc: 'Share a code to instantly pair two devices. No typing, no accounts needed.',      color: 'from-fuchsia-500 to-pink-600' },
-  { Icon: Activity,    title: 'Real-Time Progress',      desc: 'Live transfer speed, ETA and instant completion notification as bytes flow.',     color: 'from-pink-500 to-rose-600' },
-  { Icon: CheckCircle, title: 'No Account Required',     desc: 'The recipient needs no AirVault account. Any browser-enabled device works.',      color: 'from-rose-500 to-orange-500' },
+  { Icon: Radar,       title: 'Proximity Discovery',     desc: 'Auto-finds nearby AirVault users on any device — same network or anywhere.', color: 'from-violet-500 to-purple-600' },
+  { Icon: Lock,        title: 'Zero-Knowledge Transfer', desc: 'Files encrypted end-to-end. AES-GCM 256-bit. Only the recipient decrypts.',  color: 'from-purple-500 to-fuchsia-600' },
+  { Icon: QrCode,      title: 'Code Handshake',          desc: 'Share a code to instantly pair two devices. No typing, no accounts needed.', color: 'from-fuchsia-500 to-pink-600' },
+  { Icon: Activity,    title: 'Real-Time Progress',      desc: 'Live transfer speed, ETA and instant completion notification as bytes flow.',  color: 'from-pink-500 to-rose-600' },
+  { Icon: CheckCircle, title: 'No Account Required',     desc: 'The recipient needs no AirVault account. Any browser-enabled device works.', color: 'from-rose-500 to-orange-500' },
 ];
 
 /* ══════════ RADAR CANVAS ══════════ */
@@ -124,7 +128,6 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
 
     const draw = (ts) => {
       ctx.clearRect(0, 0, W, H);
-
       [0.25, 0.5, 0.75, 1].forEach(f => {
         ctx.beginPath();
         ctx.arc(cx, cy, maxR * f, 0, Math.PI * 2);
@@ -132,7 +135,6 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
         ctx.lineWidth = 1;
         ctx.stroke();
       });
-
       ctx.save();
       ctx.strokeStyle = isDark ? 'rgba(139,92,246,0.1)' : 'rgba(139,92,246,0.14)';
       ctx.lineWidth = 1;
@@ -191,7 +193,6 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
 
       rafRef.current = requestAnimationFrame(draw);
     };
-
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
   }, [devices, isScanning, isDark]);
@@ -199,7 +200,6 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
   return (
     <div className="relative w-full" style={{ maxWidth: 520, aspectRatio: '1/1' }}>
       <canvas ref={canvasRef} width={520} height={520} className="w-full h-full" />
-
       {devices.map((dev, idx) => {
         const a = ((idx / Math.max(devices.length, 1)) * Math.PI * 2) - Math.PI / 2;
         const x = 50 + 0.62 * 50 * Math.cos(a);
@@ -225,7 +225,6 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
           </div>
         );
       })}
-
       <div className="absolute top-1/2 left-1/2 pointer-events-none"
         style={{ transform: 'translate(-50%, calc(-50% + 22px))' }}>
         <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border
@@ -237,7 +236,7 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
   );
 };
 
-/* ══════════ QR MODAL — real WebRTC offer + AES key ══════════ */
+/* ══════════ QR MODAL ══════════ */
 const QrModal = ({ device, isDark, onClose, onProceed }) => {
   const [step, setStep]           = useState('generating');
   const [countdown, setCountdown] = useState(120);
@@ -245,7 +244,6 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
   const [answerInput, setAnswerInput] = useState('');
   const [copied, setCopied]       = useState(false);
   const [errMsg, setErrMsg]       = useState('');
-
   const pcRef  = useRef(null);
   const dcRef  = useRef(null);
   const keyRef = useRef(null);
@@ -256,19 +254,15 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
       try {
         const { key, b64: keyB64 } = await makeSessionKey();
         keyRef.current = key;
-
         const pc = new RTCPeerConnection(RTC_CONFIG);
         pcRef.current = pc;
         const dc = pc.createDataChannel('av', { ordered: true });
         dcRef.current = dc;
-
         await new Promise(res => {
           pc.onicecandidate = e => { if (!e.candidate) res(); };
           pc.createOffer().then(o => pc.setLocalDescription(o));
         });
-
         if (cancelled) { pc.close(); return; }
-
         const payload = JSON.stringify({
           v: 1, sdp: pc.localDescription.sdp,
           type: pc.localDescription.type, key: keyB64,
@@ -276,7 +270,6 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
         });
         setOfferCode(btoa(unescape(encodeURIComponent(payload))));
         setStep('qr');
-
         pc.onconnectionstatechange = () => {
           if (pc.connectionState === 'connected' && !cancelled) setStep('paired');
           if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && !cancelled) {
@@ -382,7 +375,6 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
               <div className="text-center w-full">
                 <p className={`text-xs font-mono font-bold tracking-widest mb-1 ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>{qrCode}</p>
                 <p className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Copy this code and share with the receiver</p>
-
                 <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 mb-3
                   ${isDark ? 'bg-slate-800/60 border-violet-500/20' : 'bg-violet-50 border-violet-200'}`}>
                   <span className={`flex-1 text-[10px] font-mono truncate ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
@@ -397,7 +389,6 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
                     {copied ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
-
                 <p className={`text-xs font-semibold mb-1 text-left ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Paste receiver's answer code:</p>
                 <textarea
                   value={answerInput}
@@ -431,7 +422,6 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
                 </div>
                 <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>seconds remaining</span>
               </div>
-
               <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                 <Loader className="w-3 h-3 animate-spin text-violet-400" />
                 Waiting for receiver to accept…
@@ -493,7 +483,7 @@ const QrModal = ({ device, isDark, onClose, onProceed }) => {
   );
 };
 
-/* ══════════ SEND MODAL — real AES-GCM + WebRTC DataChannel ══════════ */
+/* ══════════ SEND MODAL ══════════ */
 const SendModal = ({ device, isDark, onClose, rtcSession }) => {
   const [files, setFiles]       = useState([]);
   const [status, setStatus]     = useState(null);
@@ -501,7 +491,6 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
   const [speed, setSpeed]       = useState(0);
   const [eta, setEta]           = useState(0);
   const [errMsg, setErrMsg]     = useState('');
-
   const abortRef = useRef(false);
   const speedRef = useRef({ bytes: 0, ts: Date.now() });
 
@@ -511,51 +500,41 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
   const handleSend = useCallback(async () => {
     if (!files.length || !rtcSession?.dc || !rtcSession?.key) return;
     const { dc, key } = rtcSession;
-
     if (dc.readyState !== 'open') {
       setErrMsg('DataChannel not open. Reconnect and try again.');
       setStatus('error');
       return;
     }
-
     setStatus('sending');
     abortRef.current = false;
     const totalBytes = files.reduce((s, f) => s + f.size, 0);
-
     try {
       for (let fi = 0; fi < files.length; fi++) {
         if (abortRef.current) break;
         const file = files[fi];
-
         const plainBuf = await readFile(file);
         const encBuf   = await encryptBuf(plainBuf, key);
-
         dc.send(JSON.stringify({
           type: 'meta', name: file.name,
           mime: file.type || 'application/octet-stream',
           size: file.size, encryptedSize: encBuf.byteLength,
           index: fi, total: files.length,
         }));
-
         const bytes  = new Uint8Array(encBuf);
         let   offset = 0;
         speedRef.current = { bytes: 0, ts: Date.now() };
-
         while (offset < bytes.length) {
           if (abortRef.current) break;
-
           if (dc.bufferedAmount > 4 * 1024 * 1024) {
             await new Promise(res => {
               dc.bufferedAmountLowThreshold = 2 * 1024 * 1024;
               dc.onbufferedamountlow = () => { dc.onbufferedamountlow = null; res(); };
             });
           }
-
           const end   = Math.min(offset + CHUNK_SIZE, bytes.length);
           const chunk = bytes.slice(offset, end);
           dc.send(chunk);
           offset = end;
-
           const now = Date.now();
           speedRef.current.bytes += chunk.byteLength;
           if (now - speedRef.current.ts > 300) {
@@ -564,19 +543,15 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
             setSpeed(mbps.toFixed(1));
             speedRef.current = { bytes: 0, ts: now };
           }
-
           const filesDonePct = (fi / files.length) * 100;
           const thisFilePct  = (offset / bytes.length) * (100 / files.length);
           setProgress(filesDonePct + thisFilePct);
-
           const remaining = bytes.length - offset;
           const mbpsNum   = parseFloat(speed) || 1;
           setEta(Math.max(0, Math.ceil((remaining / 1048576) / mbpsNum)));
         }
-
         dc.send(JSON.stringify({ type: 'done', index: fi, more: fi < files.length - 1 }));
       }
-
       setProgress(100);
       setStatus('success');
     } catch (e) {
@@ -772,17 +747,16 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
   );
 };
 
-/* ══════════ RECEIVE MODAL — real WebRTC answer + AES-GCM decrypt ══════════ */
+/* ══════════ RECEIVE MODAL ══════════ */
 const ReceiveModal = ({ isDark, onClose }) => {
-  const [step, setStep]             = useState('paste');
-  const [offerInput, setOfferInput] = useState('');
-  const [answerCode, setAnswerCode] = useState('');
-  const [copied, setCopied]         = useState(false);
-  const [received, setReceived]     = useState([]);
-  const [progress, setProgress]     = useState(0);
+  const [step, setStep]               = useState('paste');
+  const [offerInput, setOfferInput]   = useState('');
+  const [answerCode, setAnswerCode]   = useState('');
+  const [copied, setCopied]           = useState(false);
+  const [received, setReceived]       = useState([]);
+  const [progress, setProgress]       = useState(0);
   const [currentFile, setCurrentFile] = useState('');
-  const [errMsg, setErrMsg]         = useState('');
-
+  const [errMsg, setErrMsg]           = useState('');
   const pcRef   = useRef(null);
   const keyRef  = useRef(null);
   const recvRef = useRef({ chunks: [], meta: null, got: 0 });
@@ -793,19 +767,15 @@ const ReceiveModal = ({ isDark, onClose }) => {
       const payload = JSON.parse(decodeURIComponent(escape(atob(offerInput.trim()))));
       const key     = await keyFromB64(payload.key);
       keyRef.current = key;
-
       const pc = new RTCPeerConnection(RTC_CONFIG);
       pcRef.current = pc;
-
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') setStep('receiving');
         if (pc.connectionState === 'failed') { setErrMsg('Connection failed.'); setStep('error'); }
       };
-
       pc.ondatachannel = (e) => {
         const dc = e.channel;
         dc.binaryType = 'arraybuffer';
-
         dc.onmessage = async (ev) => {
           if (typeof ev.data === 'string') {
             const msg = JSON.parse(ev.data);
@@ -841,15 +811,12 @@ const ReceiveModal = ({ isDark, onClose }) => {
           }
         };
       };
-
       await pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-
       await new Promise(res => {
         pc.onicecandidate = e => { if (!e.candidate) res(); };
       });
-
       const ans = JSON.stringify({
         v: 1, type: pc.localDescription.type,
         sdp: pc.localDescription.sdp, name: MY_NAME, id: MY_ID,
@@ -955,10 +922,8 @@ const ReceiveModal = ({ isDark, onClose }) => {
                 <>
                   <p className={`text-xs truncate ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{currentFile}</p>
                   <div className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-slate-700' : 'bg-gray-200'}`}>
-                    <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600 transition-all duration-300 relative overflow-hidden"
-                      style={{ width: `${progress}%` }}>
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
-                    </div>
+                    <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600 transition-all duration-300"
+                      style={{ width: `${progress}%` }} />
                   </div>
                   <p className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{Math.round(progress)}%</p>
                 </>
@@ -1041,7 +1006,6 @@ const ReceiveModal = ({ isDark, onClose }) => {
 /* ══════════ MAIN ══════════ */
 const AirDrop = () => {
   const { isDark, toggleTheme } = useTheme();
-
   const [devices, setDevices]         = useState([]);
   const [isScanning, setIsScanning]   = useState(false);
   const [selectedDev, setSelectedDev] = useState(null);
@@ -1050,60 +1014,98 @@ const AirDrop = () => {
   const [showReceive, setShowReceive] = useState(false);
   const [rtcSession, setRtcSession]   = useState(null);
   const [mousePos, setMousePos]       = useState({ x: 0, y: 0 });
+  const [ablyStatus, setAblyStatus]   = useState('connecting'); // 'connecting' | 'connected' | 'error'
 
-  const bcRef      = useRef(null);
-  const seenRef    = useRef(new Set());
-  const pingTimers = useRef({});
+  const channelRef  = useRef(null);
+  const clientRef   = useRef(null);
+  const seenRef     = useRef(new Set());
+  const pingTimers  = useRef({});
 
-  /* Real peer discovery via BroadcastChannel (same origin / tabs) */
+  /* ══════ ABLY REAL CROSS-DEVICE DISCOVERY ══════ */
   useEffect(() => {
-    const bc = new BroadcastChannel('airvault-discovery');
-    bcRef.current = bc;
+    if (!ABLY_KEY) {
+      console.warn('VITE_ABLY_API_KEY not set — device discovery disabled');
+      setAblyStatus('error');
+      return;
+    }
 
-    const announce = () =>
-      bc.postMessage({ type: 'hello', id: MY_ID, name: MY_NAME, devType: MY_TYPE });
-    announce();
-    const annTimer = setInterval(announce, 5000);
+    const client = new Ably.Realtime({ key: ABLY_KEY, clientId: MY_ID });
+    clientRef.current = client;
 
-    const touch = (id, name, devType) => {
-      if (id === MY_ID) return;
-      if (!seenRef.current.has(id)) {
-        seenRef.current.add(id);
-        setDevices(d => [...d, { id, name, type: devType, latency: '—', signal: 90 }]);
-      }
-      clearTimeout(pingTimers.current[id]);
-      pingTimers.current[id] = setTimeout(() => {
-        seenRef.current.delete(id);
-        setDevices(d => d.filter(x => x.id !== id));
-      }, 12000);
-    };
+    client.connection.on('connected', () => {
+      setAblyStatus('connected');
+      setIsScanning(true);
 
-    bc.onmessage = (e) => {
-      const { type, id, name, devType } = e.data;
-      if (type === 'hello') {
-        bc.postMessage({ type: 'pong', id: MY_ID, name: MY_NAME, devType: MY_TYPE });
-        touch(id, name, devType);
-      }
-      if (type === 'pong' || type === 'ping') touch(id, name, devType);
-    };
+      const channel = client.channels.get('airvault-discovery');
+      channelRef.current = channel;
+
+      // Announce ourselves
+      channel.publish('hello', { id: MY_ID, name: MY_NAME, devType: MY_TYPE });
+
+      // Someone new joins
+      channel.subscribe('hello', (msg) => {
+        const { id, name, devType } = msg.data;
+        if (id === MY_ID) return;
+        // Respond so they see us too
+        channel.publish('pong', { id: MY_ID, name: MY_NAME, devType: MY_TYPE });
+        addOrRefreshPeer(id, name, devType);
+      });
+
+      // Response to our hello
+      channel.subscribe('pong', (msg) => {
+        const { id, name, devType } = msg.data;
+        if (id === MY_ID) return;
+        addOrRefreshPeer(id, name, devType);
+      });
+
+      // Keepalive ping
+      channel.subscribe('ping', (msg) => {
+        const { id, name, devType } = msg.data;
+        if (id === MY_ID) return;
+        addOrRefreshPeer(id, name, devType);
+      });
+
+      setTimeout(() => setIsScanning(false), 3000);
+    });
+
+    client.connection.on('failed', () => setAblyStatus('error'));
+    client.connection.on('disconnected', () => setAblyStatus('connecting'));
+
+    // Keepalive: republish every 8s so others know we're still here
+    const keepalive = setInterval(() => {
+      channelRef.current?.publish('ping', { id: MY_ID, name: MY_NAME, devType: MY_TYPE });
+    }, 8000);
 
     return () => {
-      clearInterval(annTimer);
-      bc.close();
+      clearInterval(keepalive);
       Object.values(pingTimers.current).forEach(clearTimeout);
+      channelRef.current?.unsubscribe();
+      client.close();
     };
   }, []);
+
+  const addOrRefreshPeer = (id, name, devType) => {
+    if (!seenRef.current.has(id)) {
+      seenRef.current.add(id);
+      setDevices(d => [...d, { id, name, type: devType, latency: '—', signal: 90 }]);
+    }
+    // Auto-remove if silent for 20s
+    clearTimeout(pingTimers.current[id]);
+    pingTimers.current[id] = setTimeout(() => {
+      seenRef.current.delete(id);
+      setDevices(d => d.filter(x => x.id !== id));
+    }, 20000);
+  };
 
   const scan = useCallback(() => {
     setIsScanning(true);
     setDevices([]);
     seenRef.current.clear();
-    bcRef.current?.postMessage({ type: 'ping', id: MY_ID, name: MY_NAME, devType: MY_TYPE });
-    const t = setTimeout(() => setIsScanning(false), 2500);
-    return () => clearTimeout(t);
+    Object.values(pingTimers.current).forEach(clearTimeout);
+    pingTimers.current = {};
+    channelRef.current?.publish('ping', { id: MY_ID, name: MY_NAME, devType: MY_TYPE });
+    setTimeout(() => setIsScanning(false), 3000);
   }, []);
-
-  useEffect(() => { return scan(); }, [scan]);
 
   useEffect(() => {
     const h = e => setMousePos({ x: e.clientX, y: e.clientY });
@@ -1117,6 +1119,18 @@ const AirDrop = () => {
   const handleQrClose     = () => { setShowQr(false); setSelectedDev(null); };
 
   const card = `rounded-3xl border backdrop-blur-xl transition-all duration-300 ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white/80 border-gray-200'}`;
+
+  const statusDot = {
+    connecting: 'bg-yellow-400',
+    connected:  'bg-emerald-400',
+    error:      'bg-red-400',
+  }[ablyStatus];
+
+  const statusText = {
+    connecting: 'Connecting…',
+    connected:  `${devices.length} devices nearby`,
+    error:      'Discovery unavailable',
+  }[ablyStatus];
 
   return (
     <div className={`h-screen overflow-hidden transition-colors duration-500 airdrop-root
@@ -1145,239 +1159,254 @@ const AirDrop = () => {
           left: mousePos.x - 160, top: mousePos.y - 160, transition: 'all .3s ease-out',
         }} />
 
-      {/* Layout shell */}
       <div className="relative z-10 flex flex-col h-full">
 
-      {/* NAV */}
-      <header className={`flex-shrink-0 border-b backdrop-blur-2xl transition-colors duration-500
-        ${isDark ? 'bg-slate-900/90 border-violet-500/15' : 'bg-white/95 border-gray-200'}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/30">
-              <Wifi className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className={`font-black text-lg leading-none ${isDark ? 'text-white' : 'text-gray-900'}`}>AirDrop</p>
-              <p className="text-[10px] text-violet-400 font-semibold tracking-wider">AIRVAULT</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button onClick={() => setShowReceive(true)}
-              className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all duration-300 hover:scale-105
-                ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100'}`}>
-              <Upload className="w-3 h-3 rotate-180" />
-              Receive Files
-            </button>
-            <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold
-              ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'}`}>
-              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
-              {devices.length} devices nearby
-            </div>
-            <button onClick={toggleTheme}
-              className={`p-2.5 rounded-xl transition-all duration-300 group ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-gray-100 hover:bg-gray-200'}`}>
-              {isDark
-                ? <Sun  className="w-5 h-5 text-yellow-400 group-hover:rotate-90 transition-transform duration-500" />
-                : <Moon className="w-5 h-5 text-indigo-600 group-hover:-rotate-12 transition-transform duration-500" />}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 overflow-y-auto airdrop-scrollbar">
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-
-        <div className="text-center">
-          <div className={`inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border mb-5 backdrop-blur-xl
-            ${isDark ? 'bg-violet-500/10 border-violet-500/25' : 'bg-violet-50 border-violet-200'}`}>
-            <span className="relative flex">
-              <span className="absolute w-2 h-2 bg-violet-400 rounded-full animate-ping" />
-              <span className="relative w-2 h-2 bg-violet-500 rounded-full" />
-            </span>
-            <span className={`text-sm font-semibold ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
-              No Account Required · Peer-to-Peer Encrypted
-            </span>
-          </div>
-          <h1 className="text-4xl sm:text-5xl font-black mb-3 bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
-            Instant Wireless Sharing
-          </h1>
-          <p className={`text-base max-w-xl mx-auto ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            Send files peer-to-peer in seconds. No login, no cloud upload — just open, scan, and share.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap justify-center gap-2">
-          {[
-            { text: 'Zero-Knowledge', icon: Lock },
-            { text: 'E2E Encrypted',  icon: Shield },
-            { text: 'No Database',    icon: Database },
-            { text: 'Any Device',     icon: Globe },
-            { text: 'QR Handshake',   icon: QrCode },
-          ].map(({ text, icon: Icon }) => (
-            <span key={text}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border
-                ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'}`}>
-              <Icon className="w-3 h-3" />{text}
-            </span>
-          ))}
-        </div>
-
-        <div className="grid lg:grid-cols-12 gap-6 items-start">
-
-          <div className="lg:col-span-8">
-            <div className={`${card} p-5 sm:p-7`}>
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
-                    <Radar className="w-4 h-4 text-white" />
-                  </div>
-                  <div>
-                    <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Proximity Radar</p>
-                    <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {devices.length > 0 ? 'Click any device to initiate transfer' : 'Open this page in another tab or device to see peers'}
-                    </p>
-                  </div>
-                </div>
-                <button onClick={scan} disabled={isScanning}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-300
-                    ${isScanning
-                      ? isDark ? 'bg-slate-700/50 border-slate-600/50 text-slate-400 cursor-not-allowed' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-violet-500 to-fuchsia-600 border-transparent text-white shadow-lg shadow-violet-500/25 hover:scale-105'
-                    }`}>
-                  <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
-                  {isScanning ? 'Scanning…' : 'Rescan'}
-                </button>
+        {/* NAV */}
+        <header className={`flex-shrink-0 border-b backdrop-blur-2xl transition-colors duration-500
+          ${isDark ? 'bg-slate-900/90 border-violet-500/15' : 'bg-white/95 border-gray-200'}`}>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/30">
+                <Wifi className="w-5 h-5 text-white" />
               </div>
-
-              <div className="flex justify-center">
-                <RadarCanvas devices={devices} isScanning={isScanning} isDark={isDark} onDeviceClick={handleDeviceClick} />
+              <div>
+                <p className={`font-black text-lg leading-none ${isDark ? 'text-white' : 'text-gray-900'}`}>AirDrop</p>
+                <p className="text-[10px] text-violet-400 font-semibold tracking-wider">AIRVAULT</p>
               </div>
-
-              {isScanning && (
-                <div className="flex items-center justify-center gap-2 mt-4">
-                  <Loader className="w-4 h-4 text-violet-400 animate-spin" />
-                  <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    Discovering nearby devices…
-                  </span>
-                </div>
-              )}
-              {!isScanning && devices.length === 0 && (
-                <p className={`text-center text-sm mt-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  No peers found — open this app in another tab or browser on the same machine
-                </p>
-              )}
             </div>
-          </div>
-
-          <div className="lg:col-span-4 space-y-5">
-
-            <div className={`${card} p-5`}>
-              <div className="flex items-center justify-between mb-4">
-                <p className={`font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  <Users className={`w-4 h-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
-                  Nearby Devices
-                </p>
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full
-                  ${isDark ? 'bg-violet-500/10 text-violet-400' : 'bg-violet-50 text-violet-600'}`}>
-                  {devices.length} online
-                </span>
-              </div>
-
-              {devices.length === 0 ? (
-                <div className="text-center py-8">
-                  <WifiOff className={`w-10 h-10 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-300'}`} />
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {isScanning ? 'Scanning…' : 'No peers on this network'}
-                  </p>
-                  <p className={`text-xs mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>Open another tab to test</p>
-                </div>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto py-2 px-2 overflow-x-hidden airdrop-scrollbar">
-                  {devices.map(dev => {
-                    const DevIcon = getDeviceIcon(dev.type);
-                    return (
-                      <button key={dev.id} onClick={() => handleDeviceClick(dev)}
-                        className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg group
-                          ${isDark
-                            ? 'bg-slate-900/50 border-slate-700/50 hover:border-violet-500/50 hover:bg-slate-900/80 hover:shadow-violet-500/10'
-                            : 'bg-gray-50 border-gray-200 hover:border-violet-400 hover:bg-white hover:shadow-violet-400/10'
-                          }`}>
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3
-                          ${isDark ? 'bg-violet-500/10' : 'bg-violet-50'}`}>
-                          <DevIcon className={`w-4 h-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold text-sm truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{dev.name}</p>
-                          <p className={`text-[10px] flex items-center gap-1.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                            <Activity className="w-2.5 h-2.5" />{dev.id}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                          <ChevronRight className={`w-4 h-4 group-hover:translate-x-0.5 transition-transform ${isDark ? 'text-gray-600' : 'text-gray-300'}`} />
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
+            <div className="flex items-center gap-3">
               <button onClick={() => setShowReceive(true)}
-                className={`sm:hidden mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-xs font-semibold transition-all
+                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all duration-300 hover:scale-105
                   ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100'}`}>
-                <Upload className="w-3 h-3 rotate-180" /> Receive Files
+                <Upload className="w-3 h-3 rotate-180" />
+                Receive Files
+              </button>
+              <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold
+                ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'}`}>
+                <span className={`w-1.5 h-1.5 ${statusDot} rounded-full animate-pulse`} />
+                {statusText}
+              </div>
+              <button onClick={toggleTheme}
+                className={`p-2.5 rounded-xl transition-all duration-300 group ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-gray-100 hover:bg-gray-200'}`}>
+                {isDark
+                  ? <Sun  className="w-5 h-5 text-yellow-400 group-hover:rotate-90 transition-transform duration-500" />
+                  : <Moon className="w-5 h-5 text-indigo-600 group-hover:-rotate-12 transition-transform duration-500" />}
               </button>
             </div>
-
-            <div className={`${card} p-5`}>
-              <p className={`font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>How It Works</p>
-              <div className="space-y-2.5">
-                {[
-                  { step: '01', Icon: Radar,  label: 'Open AirDrop',   desc: 'Real peers via BroadcastChannel'       },
-                  { step: '02', Icon: QrCode, label: 'Share Code',      desc: 'WebRTC offer with AES-GCM key'         },
-                  { step: '03', Icon: Upload, label: 'Pick Files',      desc: 'Any format, any size'                  },
-                  { step: '04', Icon: Zap,    label: 'Done in Seconds', desc: 'Encrypted P2P via WebRTC DataChannel'  },
-                ].map(({ step, Icon, label, desc }) => (
-                  <div key={step}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border transition-all duration-200 hover:-translate-y-0.5
-                      ${isDark ? 'bg-slate-900/50 border-slate-700/30 hover:border-violet-500/30' : 'bg-gray-50 border-gray-100 hover:border-violet-300'}`}>
-                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center flex-shrink-0 shadow-md">
-                      <Icon className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`text-[9px] font-black tracking-widest ${isDark ? 'text-violet-500' : 'text-violet-400'}`}>{step}</span>
-                        <p className={`font-semibold text-xs ${isDark ? 'text-white' : 'text-gray-900'}`}>{label}</p>
-                      </div>
-                      <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {FEATURES.map(({ Icon, title, desc, color }) => (
-            <div key={title}
-              className={`group relative rounded-3xl border p-5 overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl
-                ${isDark
-                  ? 'bg-slate-800/40 border-slate-700/50 hover:border-violet-500/40 hover:shadow-violet-500/10'
-                  : 'bg-white/70 border-gray-200 hover:border-violet-400/50 hover:shadow-violet-400/10'
-                }`}>
-              <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
-              <div className="relative">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-4 shadow-lg bg-gradient-to-br ${color} group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
-                  <Icon className="w-5 h-5 text-white" />
+        <div className="flex-1 overflow-y-auto airdrop-scrollbar">
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+
+            <div className="text-center">
+              <div className={`inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border mb-5 backdrop-blur-xl
+                ${isDark ? 'bg-violet-500/10 border-violet-500/25' : 'bg-violet-50 border-violet-200'}`}>
+                <span className="relative flex">
+                  <span className="absolute w-2 h-2 bg-violet-400 rounded-full animate-ping" />
+                  <span className="relative w-2 h-2 bg-violet-500 rounded-full" />
+                </span>
+                <span className={`text-sm font-semibold ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
+                  No Account Required · Peer-to-Peer Encrypted · Works Across Devices
+                </span>
+              </div>
+              <h1 className="text-4xl sm:text-5xl font-black mb-3 bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
+                Instant Wireless Sharing
+              </h1>
+              <p className={`text-base max-w-xl mx-auto ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Send files peer-to-peer in seconds between any devices. No login, no cloud upload — just open, scan, and share.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-2">
+              {[
+                { text: 'Zero-Knowledge', icon: Lock },
+                { text: 'E2E Encrypted',  icon: Shield },
+                { text: 'No Database',    icon: Database },
+                { text: 'Any Device',     icon: Globe },
+                { text: 'QR Handshake',   icon: QrCode },
+                { text: 'Cross-Device',   icon: Wifi },
+              ].map(({ text, icon: Icon }) => (
+                <span key={text}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border
+                    ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'}`}>
+                  <Icon className="w-3 h-3" />{text}
+                </span>
+              ))}
+            </div>
+
+            {/* Missing API key warning */}
+            {ablyStatus === 'error' && (
+              <div className={`rounded-2xl border p-4 flex items-start gap-3 ${isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'}`}>
+                <WifiOff className={`w-5 h-5 flex-shrink-0 mt-0.5 ${isDark ? 'text-red-400' : 'text-red-500'}`} />
+                <div>
+                  <p className={`font-bold text-sm ${isDark ? 'text-red-300' : 'text-red-700'}`}>Device discovery unavailable</p>
+                  <p className={`text-xs mt-1 ${isDark ? 'text-red-400/70' : 'text-red-500'}`}>
+                    <code>VITE_ABLY_API_KEY</code> is missing from your environment. Add it to your <code>.env</code> file and restart. You can still manually exchange offer/answer codes using the Receive Files button.
+                  </p>
                 </div>
-                <p className={`font-bold text-sm mb-1.5 ${isDark ? 'text-white' : 'text-gray-900'}`}>{title}</p>
-                <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{desc}</p>
+              </div>
+            )}
+
+            <div className="grid lg:grid-cols-12 gap-6 items-start">
+              <div className="lg:col-span-8">
+                <div className={`${card} p-5 sm:p-7`}>
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/25">
+                        <Radar className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Proximity Radar</p>
+                        <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {devices.length > 0
+                            ? 'Click any device to initiate transfer'
+                            : 'Open this page on another device to see it here'}
+                        </p>
+                      </div>
+                    </div>
+                    <button onClick={scan} disabled={isScanning}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-300
+                        ${isScanning
+                          ? isDark ? 'bg-slate-700/50 border-slate-600/50 text-slate-400 cursor-not-allowed' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-violet-500 to-fuchsia-600 border-transparent text-white shadow-lg shadow-violet-500/25 hover:scale-105'
+                        }`}>
+                      <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+                      {isScanning ? 'Scanning…' : 'Rescan'}
+                    </button>
+                  </div>
+
+                  <div className="flex justify-center">
+                    <RadarCanvas devices={devices} isScanning={isScanning} isDark={isDark} onDeviceClick={handleDeviceClick} />
+                  </div>
+
+                  {isScanning && (
+                    <div className="flex items-center justify-center gap-2 mt-4">
+                      <Loader className="w-4 h-4 text-violet-400 animate-spin" />
+                      <span className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                        Discovering nearby devices…
+                      </span>
+                    </div>
+                  )}
+                  {!isScanning && devices.length === 0 && ablyStatus === 'connected' && (
+                    <p className={`text-center text-sm mt-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      No peers found — open this app on your phone or another device
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-4 space-y-5">
+                <div className={`${card} p-5`}>
+                  <div className="flex items-center justify-between mb-4">
+                    <p className={`font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      <Users className={`w-4 h-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+                      Nearby Devices
+                    </p>
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full
+                      ${isDark ? 'bg-violet-500/10 text-violet-400' : 'bg-violet-50 text-violet-600'}`}>
+                      {devices.length} online
+                    </span>
+                  </div>
+
+                  {devices.length === 0 ? (
+                    <div className="text-center py-8">
+                      <WifiOff className={`w-10 h-10 mx-auto mb-3 ${isDark ? 'text-gray-600' : 'text-gray-300'}`} />
+                      <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                        {isScanning ? 'Scanning…' : ablyStatus === 'connecting' ? 'Connecting to network…' : 'No peers found'}
+                      </p>
+                      <p className={`text-xs mt-1 ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                        Open on your phone or another browser
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto py-2 px-2 overflow-x-hidden airdrop-scrollbar">
+                      {devices.map(dev => {
+                        const DevIcon = getDeviceIcon(dev.type);
+                        return (
+                          <button key={dev.id} onClick={() => handleDeviceClick(dev)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg group
+                              ${isDark
+                                ? 'bg-slate-900/50 border-slate-700/50 hover:border-violet-500/50 hover:bg-slate-900/80 hover:shadow-violet-500/10'
+                                : 'bg-gray-50 border-gray-200 hover:border-violet-400 hover:bg-white hover:shadow-violet-400/10'
+                              }`}>
+                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:rotate-3
+                              ${isDark ? 'bg-violet-500/10' : 'bg-violet-50'}`}>
+                              <DevIcon className={`w-4 h-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-semibold text-sm truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{dev.name}</p>
+                              <p className={`text-[10px] flex items-center gap-1.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                                <Activity className="w-2.5 h-2.5" />{dev.id}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                              <ChevronRight className={`w-4 h-4 group-hover:translate-x-0.5 transition-transform ${isDark ? 'text-gray-600' : 'text-gray-300'}`} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <button onClick={() => setShowReceive(true)}
+                    className={`sm:hidden mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-xs font-semibold transition-all
+                      ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100'}`}>
+                    <Upload className="w-3 h-3 rotate-180" /> Receive Files
+                  </button>
+                </div>
+
+                <div className={`${card} p-5`}>
+                  <p className={`font-bold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>How It Works</p>
+                  <div className="space-y-2.5">
+                    {[
+                      { step: '01', Icon: Radar,  label: 'Open on Any Device', desc: 'Ably powers real cross-device discovery'  },
+                      { step: '02', Icon: QrCode, label: 'Share Code',          desc: 'WebRTC offer with AES-GCM key'            },
+                      { step: '03', Icon: Upload, label: 'Pick Files',          desc: 'Any format, any size'                    },
+                      { step: '04', Icon: Zap,    label: 'Done in Seconds',     desc: 'Encrypted P2P via WebRTC DataChannel'    },
+                    ].map(({ step, Icon, label, desc }) => (
+                      <div key={step}
+                        className={`flex items-center gap-3 p-3 rounded-2xl border transition-all duration-200 hover:-translate-y-0.5
+                          ${isDark ? 'bg-slate-900/50 border-slate-700/30 hover:border-violet-500/30' : 'bg-gray-50 border-gray-100 hover:border-violet-300'}`}>
+                        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                          <Icon className="w-4 h-4 text-white" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[9px] font-black tracking-widest ${isDark ? 'text-violet-500' : 'text-violet-400'}`}>{step}</span>
+                            <p className={`font-semibold text-xs ${isDark ? 'text-white' : 'text-gray-900'}`}>{label}</p>
+                          </div>
+                          <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {FEATURES.map(({ Icon, title, desc, color }) => (
+                <div key={title}
+                  className={`group relative rounded-3xl border p-5 overflow-hidden transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl
+                    ${isDark
+                      ? 'bg-slate-800/40 border-slate-700/50 hover:border-violet-500/40 hover:shadow-violet-500/10'
+                      : 'bg-white/70 border-gray-200 hover:border-violet-400/50 hover:shadow-violet-400/10'
+                    }`}>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
+                  <div className="relative">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-4 shadow-lg bg-gradient-to-br ${color} group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
+                      <Icon className="w-5 h-5 text-white" />
+                    </div>
+                    <p className={`font-bold text-sm mb-1.5 ${isDark ? 'text-white' : 'text-gray-900'}`}>{title}</p>
+                    <p className={`text-xs leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </main>
         </div>
-      </main>
-      </div>
       </div>
 
       {showQr      && selectedDev && (
@@ -1397,7 +1426,6 @@ const AirDrop = () => {
         .animate-beam        { animation: beam 4s ease-in-out infinite; }
         .animate-beam-delay  { animation: beam-delay 4s ease-in-out infinite; animation-delay: 2s; }
         .animate-shimmer     { animation: shimmer 2.5s infinite; }
-
         .airdrop-scrollbar::-webkit-scrollbar { width: 4px; }
         .airdrop-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .airdrop-scrollbar::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.45); border-radius: 2px; }
