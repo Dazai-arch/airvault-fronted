@@ -26,8 +26,7 @@ const HamburgerMenu = () => {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // ── Close on outside click (mobile only) ──────────────────
-  // Uses mousedown instead of touchstart to avoid race with button onClick
+  // ── Close on outside click (mobile only, when expanded) ───
   useEffect(() => {
     if (!isMobile || !isExpanded) return;
     const handler = (e) => {
@@ -39,7 +38,7 @@ const HamburgerMenu = () => {
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
   }, [isMobile, isExpanded]);
 
-  // ── Read user — handle ALL possible shapes ────────────────
+  // ── Read user ─────────────────────────────────────────────
   const rawUser     = JSON.parse(localStorage.getItem("user") || "{}");
   const userData    = rawUser?.user ?? rawUser;
   const displayName = userData?.fullName || userData?.name || "User";
@@ -120,15 +119,14 @@ const HamburgerMenu = () => {
   ];
 
   // ── Sidebar width logic ────────────────────────────────────
-  // Desktop: 60px collapsed → 220px on hover
-  // Mobile:  0px hidden → 220px when toggled
-  const sidebarWidth = isMobile
-    ? (isExpanded ? 220 : 0)
-    : (isExpanded ? 220 : 60);
+  // Both mobile & desktop: 60px collapsed → 220px expanded
+  // On mobile it's always visible at 60px, expands on icon tap
+  // On desktop it expands on hover
+  const sidebarWidth = isExpanded ? 220 : 60;
 
   return (
     <>
-      {/* ── Mobile backdrop — sits below sidebar (z-30) ────── */}
+      {/* ── Mobile backdrop (only when expanded) ───────────── */}
       <AnimatePresence>
         {isMobile && isExpanded && (
           <motion.div
@@ -143,49 +141,37 @@ const HamburgerMenu = () => {
         )}
       </AnimatePresence>
 
-      {/* ── Mobile toggle button
-            z-[51]: above header (z-50) so it stays visible,
-            but modals should use z-[60]+ to appear on top    ── */}
-      {isMobile && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            isExpanded ? collapse() : expand();
-          }}
-          className={`fixed top-[14px] left-3 z-[51] p-2 rounded-xl border shadow-lg transition-all duration-200 ${
-            isDark
-              ? "bg-slate-800 border-slate-700 text-cyan-400"
-              : "bg-white border-gray-200 text-cyan-600"
-          }`}
-        >
-          {isExpanded ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      )}
-
-      {/* ── Sidebar — z-[48] so modals (z-50+) appear above it ── */}
+      {/* ── Sidebar — always visible, z-40 ─────────────────── */}
       <motion.aside
         ref={sidebarRef}
         initial={false}
         animate={{ width: sidebarWidth }}
         transition={{ type: "spring", damping: 24, stiffness: 280 }}
+        // Desktop: hover to expand/collapse
         onMouseEnter={!isMobile ? expand   : undefined}
         onMouseLeave={!isMobile ? collapse : undefined}
-        style={{
-          backdropFilter: "blur(20px)",
-          pointerEvents: isMobile && !isExpanded ? "none" : "auto",
-        }}
-        className={`fixed left-0 top-16 bottom-0 z-[48] flex flex-col border-r overflow-hidden transition-colors duration-300 ${
+        style={{ backdropFilter: "blur(20px)" }}
+        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col border-r overflow-hidden transition-colors duration-300 ${
           isDark ? "bg-slate-900/95 border-slate-700/50" : "bg-white/95 border-gray-200"
         }`}
       >
         {/* Top accent line */}
         <div className="h-[2px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 flex-shrink-0" />
 
-        {/* Header */}
+        {/* Header — clicking the Menu/X icon toggles on mobile */}
         <div className={`flex items-center px-3 py-3 border-b flex-shrink-0 ${isDark ? "border-slate-700/50" : "border-gray-200"}`}>
-          <div className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl ${isDark ? "text-cyan-400" : "text-cyan-600"}`}>
-            <Menu className="w-[18px] h-[18px]" />
-          </div>
+          <button
+            onClick={() => isMobile ? (isExpanded ? collapse() : expand()) : undefined}
+            className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl transition-colors duration-200 ${
+              isMobile ? "cursor-pointer" : "cursor-default"
+            } ${isDark ? "text-cyan-400 hover:bg-slate-800" : "text-cyan-600 hover:bg-gray-100"}`}
+          >
+            {isMobile && isExpanded
+              ? <X className="w-[18px] h-[18px]" />
+              : <Menu className="w-[18px] h-[18px]" />
+            }
+          </button>
+
           <AnimatePresence>
             {isExpanded && (
               <motion.div
@@ -215,6 +201,8 @@ const HamburgerMenu = () => {
                 title={!isExpanded ? item.label : undefined}
                 onClick={() => {
                   if (item.hasSubmenu) {
+                    // On mobile, open the sidebar first if collapsed
+                    if (isMobile && !isExpanded) { expand(); return; }
                     setExpandedSubmenu(expandedSubmenu === item.id ? null : item.id);
                   } else {
                     item.action();
