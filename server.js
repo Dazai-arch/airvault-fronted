@@ -4386,6 +4386,17 @@ app.get("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   }
 });
 
+app.get("/api/debug/file/:fileId", authenticateToken, async (req, res) => {
+  const file = await VaultFile.findById(req.params.fileId);
+  if (!file) return res.status(404).json({ message: "not found" });
+  res.json({
+    storedKey:    file.storedKey,
+    isEncrypted:  file.isEncrypted,
+    size:         file.size,
+    mimeType:     file.mimeType,
+    originalName: file.originalName,
+  });
+});
 
 // LOGOUT
 app.post("/api/auth/logout", authenticateToken, async (req, res) => {

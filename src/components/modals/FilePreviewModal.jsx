@@ -658,6 +658,9 @@ export default function FilePreviewModal({
     const buf = await fileRes.arrayBuffer();
     console.log("buf byteLength:", buf.byteLength);
 
+const firstBytes = new Uint8Array(buf).slice(0, 8);
+console.log("first bytes:", Array.from(firstBytes));
+
     // 3. Decrypt if needed
     let finalBlob;
     if (file.isEncrypted) {
