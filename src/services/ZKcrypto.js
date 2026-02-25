@@ -190,24 +190,23 @@ export async function resolveVaultKey(vaultId, hasPassword, passphrase = null, s
       newSaltB64 = buf2b64(salt.buffer);
     }
     const key = await deriveKey(passphrase, salt);
-    return { key, saltB64: newSaltB64, keyHex: null };
+    return { key, saltB64: newSaltB64, keyHex: null, isNewKey: false };
+
   } else {
-    // Check localStorage first (survives re-login), then sessionStorage
+    // Check localStorage first, then sessionStorage
     const lsKey = `zk_vault_key_${vaultId}`;
     let hex = localStorage.getItem(lsKey) || getVaultKeyHex(vaultId);
-    
-    let isNew = false;
+
     if (!hex) {
+      // No key anywhere — generate new one (brand new vault)
       const { key, rawHex } = await generateRandomKey();
       hex = rawHex;
-      isNew = true;
-      // Store in both
       localStorage.setItem(lsKey, hex);
       storeVaultKeyHex(vaultId, hex);
       return { key, saltB64: null, keyHex: hex, isNewKey: true };
     }
-    
-    // Restore into sessionStorage if missing
+
+    // Key found locally — sync to sessionStorage and return
     storeVaultKeyHex(vaultId, hex);
     const key = await importKeyFromHex(hex);
     return { key, saltB64: null, keyHex: hex, isNewKey: false };
