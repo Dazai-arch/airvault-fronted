@@ -21,8 +21,12 @@ const VaultTopBar = () => {
         ? "bg-slate-900/95 border-slate-700/50 shadow-lg shadow-black/10"
         : "bg-white/95 border-gray-200 shadow-lg shadow-gray-200/50"
     }`}>
-      {/* pl-16 on all sizes so content clears the always-visible 60px sidebar */}
-      <div className="pl-16 pr-3 sm:pr-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
+      {/* 
+        left-0 to right-0 header. On mobile the sidebar is 60px wide and sits on top (z-40),
+        so we just use normal px-3 — the logo naturally starts after the sidebar.
+        On desktop same, sidebar is behind content area.
+      */}
+      <div className="px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
 
         {/* Logo */}
         <div className="flex items-center gap-2 sm:gap-3 group cursor-pointer flex-shrink-0">
