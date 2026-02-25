@@ -1927,11 +1927,19 @@ app.get(
         return res.sendFile(path.resolve(filePath));
 
       } else {
-        // Production — proxy through backend to avoid ERR_CERT_AUTHORITY_INVALID
-        const token = req.headers["authorization"]?.split(" ")[1];
-  const proxyUrl = `${process.env.BACKEND_URL}/api/vaults/${vaultId}/files/${fileId}/stream?token=${token}`;
+  // Production — presigned R2 URL (browser fetches directly, no proxy/CORS issues)
+  const { GetObjectCommand } = require("@aws-sdk/client-s3");
+  const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+
+  const cmd = new GetObjectCommand({
+    Bucket: process.env.R2_BUCKET_NAME,
+    Key: file.storedKey,
+  });
+
+  const presignedUrl = await getSignedUrl(r2Client, cmd, { expiresIn: 300 });
+
   return res.status(200).json({
-    downloadUrl:  proxyUrl,
+    downloadUrl:  presignedUrl,
     originalName: file.originalName,
     mimeType:     file.mimeType,
     isEncrypted:  file.isEncrypted || false,
