@@ -4375,19 +4375,14 @@ app.post("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
     const { keyHex } = req.body;
-
     if (!keyHex) return res.status(400).json({ message: "keyHex is required" });
-
     const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
     if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    // Reuse ZKSalt model — store keyHex in saltB64 field, or add a separate field
     await ZKSalt.findOneAndUpdate(
       { vaultId },
       { vaultId, userId: req.user.userId, saltB64: keyHex, updatedAt: new Date() },
       { upsert: true, new: true }
     );
-
     res.status(200).json({ message: "Key stored" });
   } catch (err) {
     console.error("ZK Key Store Error:", err);
@@ -4395,17 +4390,17 @@ app.post("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   }
 });
 
-// Get raw key for passwordless vaults
 app.get("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
-    const record = await ZKSalt.findOne({ vaultId });
+    const record = await ZKSalt.findOne({ vaultId, userId: req.user.userId });
     if (!record) return res.status(404).json({ message: "No key found" });
     res.status(200).json({ keyHex: record.saltB64 });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // LOGOUT
 app.post("/api/auth/logout", authenticateToken, async (req, res) => {
