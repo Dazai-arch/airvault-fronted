@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Shield, Lock, Upload, Key, Wifi, QrCode, Link2, FolderOpen,
+  Shield, Lock, Upload, Key, Wifi, QrCode, Link, FolderOpen,
   Tag, Search, Eye, Download, Share2, Trash2, AlertCircle,
   CheckCircle, ArrowRight, Zap, Globe, Smartphone, Database,
   Award, Clock, Users, Moon, Sun, Radar, Activity, CheckCircle2,
