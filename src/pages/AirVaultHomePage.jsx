@@ -556,11 +556,11 @@ const AirVaultHomepage = () => {
                 </div>
                 <div className="space-y-3">
                   {[
-                    { Icon: Radar,        title: 'Proximity Discovery',     desc: 'Automatically finds nearby AirVault users on the same network.',               color: 'from-violet-500 to-purple-600'  },
-                    { Icon: Lock,         title: 'Zero-Knowledge Transfer', desc: 'Files are encrypted end-to-end. Only the recipient can decrypt.',              color: 'from-purple-500 to-fuchsia-600' },
-                    { Icon: QrCode,       title: 'QR Code Handshake',       desc: 'Scan a QR code to instantly pair two devices. No accounts needed.',           color: 'from-fuchsia-500 to-pink-600'   },
-                    { Icon: Activity,     title: 'Real-Time Progress',      desc: 'Live transfer speed, ETA, and completion notification.',                       color: 'from-pink-500 to-rose-600'      },
-                    { Icon: CheckCircle2, title: 'No Account Required',     desc: "The recipient doesn't need an AirVault account. Any browser-enabled device works.", color: 'from-rose-500 to-orange-500'  },
+                    { Icon: Radar,        title: 'Proximity Discovery',     desc: 'Devices in the same room join a shared code — no network scanning or Bluetooth needed.',  color: 'from-violet-500 to-purple-600'  },
+                    { Icon: Lock,         title: 'Zero-Knowledge Transfer', desc: 'Files are encrypted end-to-end with AES-GCM 256-bit. Only the recipient can decrypt.',     color: 'from-purple-500 to-fuchsia-600' },
+                    { Icon: Signal,       title: 'Automatic P2P Handshake', desc: 'Tap a device on the radar — WebRTC negotiation happens silently in the background.',        color: 'from-fuchsia-500 to-pink-600'   },
+                    { Icon: Activity,     title: 'Real-Time Progress',      desc: 'Live transfer speed, ETA, and completion notification as your files fly across.',            color: 'from-pink-500 to-rose-600'      },
+                    { Icon: CheckCircle2, title: 'No Account Required',     desc: "The recipient doesn't need an AirVault account. Any browser-enabled device works.",         color: 'from-rose-500 to-orange-500'    },
                   ].map(({ Icon, title, desc, color }, i) => (
                     <div key={i} className={`group flex items-start gap-4 p-4 rounded-2xl border transition-all duration-300 hover:-translate-y-0.5 ${isDark ? 'bg-slate-800/40 border-slate-700/50 hover:border-violet-500/50 hover:bg-slate-800/70 hover:shadow-xl hover:shadow-violet-500/10' : 'bg-white/70 border-gray-200 hover:border-violet-400/60 hover:bg-white hover:shadow-xl hover:shadow-violet-400/10'}`}>
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-gradient-to-br ${color} shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}>
@@ -580,10 +580,10 @@ const AirVaultHomepage = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 relative">
                   <div className={`hidden sm:block absolute top-8 left-[12.5%] right-[12.5%] h-px ${isDark ? 'bg-gradient-to-r from-violet-500/20 via-purple-400/30 to-fuchsia-500/20' : 'bg-gradient-to-r from-violet-300/40 via-purple-300/50 to-fuchsia-300/40'}`} />
                   {[
-                    { step: '01', Icon: Smartphone, label: 'Open AirDrop',  desc: 'No login needed'        },
-                    { step: '02', Icon: QrCode,     label: 'Scan QR',        desc: 'Instant device pairing' },
-                    { step: '03', Icon: Upload,     label: 'Pick Files',      desc: 'Any format, any size'   },
-                    { step: '04', Icon: Zap,        label: 'Done in Seconds', desc: 'Encrypted & delivered'  },
+                    { step: '01', Icon: Link,       label: 'Create Room Code',  desc: 'Generate & share a code with the other device'  },
+                    { step: '02', Icon: Radar,      label: 'Discover Devices',  desc: 'Both join — devices appear on the radar'        },
+                    { step: '03', Icon: Upload,     label: 'Tap & Send',        desc: 'Tap a device, pick files, hit Send'             },
+                    { step: '04', Icon: Zap,        label: 'Accept & Done',     desc: 'Receiver taps Accept — encrypted & delivered'  },
                   ].map(({ step, Icon, label, desc }, i) => (
                     <div key={i} className="flex flex-col items-center text-center relative z-10">
                       <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-xl bg-gradient-to-br from-violet-500 to-purple-600 hover:scale-110 hover:-translate-y-1 transition-all duration-300 cursor-default">

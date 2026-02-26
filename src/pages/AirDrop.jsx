@@ -3,12 +3,11 @@ import * as Ably from 'ably';
 import {
   Wifi, WifiOff, Upload, X, Check, Loader, File, Image as ImageIcon,
   FileText, Music, Video, Smartphone, Laptop, Tablet, Monitor, Globe,
-  Shield, Lock, Radar, Activity, CheckCircle, Signal,
-  Zap, Database, Users, ChevronRight, RefreshCw, Sun, Moon, Copy, Link
+  Shield, Lock, Radar, Signal, Zap, Users, ChevronRight, RefreshCw,
+  Sun, Moon, Link
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-// ─── REPLACE WITH YOUR ABLY KEY (click Show on the Publish+Subscribe key) ────
 const ABLY_KEY = import.meta.env.VITE_ABLY_API_KEY || 'YOUR_ABLY_KEY_HERE';
 
 /* ══════════ HELPERS ══════════ */
@@ -103,66 +102,6 @@ const MY_TYPE = (() => {
 })();
 const MY_NAME = `${MY_TYPE === 'phone' ? 'Mobile' : MY_TYPE === 'tablet' ? 'Tablet' : 'Desktop'} ${MY_ID}`;
 
-/* ══════════ SIMPLE QR (pure SVG — no library needed) ══════════ */
-const SimpleQR = ({ value, size = 180, isDark }) => {
-  const gridSize = 21;
-  const cellSize = size / gridSize;
-  const bg = isDark ? '#1e1b4b' : '#f5f3ff';
-  const fg = '#7c3aed';
-
-  // Deterministic fill based on value
-  const filled = (row, col) => {
-    // Finder pattern top-left
-    if (row < 7 && col < 7) {
-      const r = row, c = col;
-      if (r === 0 || r === 6 || c === 0 || c === 6) return true;
-      if (r >= 2 && r <= 4 && c >= 2 && c <= 4) return true;
-      return false;
-    }
-    // Finder pattern top-right
-    if (row < 7 && col >= gridSize - 7) {
-      const r = row, c = col - (gridSize - 7);
-      if (r === 0 || r === 6 || c === 0 || c === 6) return true;
-      if (r >= 2 && r <= 4 && c >= 2 && c <= 4) return true;
-      return false;
-    }
-    // Finder pattern bottom-left
-    if (row >= gridSize - 7 && col < 7) {
-      const r = row - (gridSize - 7), c = col;
-      if (r === 0 || r === 6 || c === 0 || c === 6) return true;
-      if (r >= 2 && r <= 4 && c >= 2 && c <= 4) return true;
-      return false;
-    }
-    // Timing patterns
-    if (row === 6 || col === 6) return (row + col) % 2 === 0;
-    // Data area — deterministic from value
-    const idx = (row * gridSize + col) % value.length;
-    const seed = value.charCodeAt(idx) ^ (row * 17 + col * 31);
-    return seed % 3 !== 0;
-  };
-
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <rect width={size} height={size} fill={bg} rx="8" />
-      {Array.from({ length: gridSize }, (_, row) =>
-        Array.from({ length: gridSize }, (_, col) =>
-          filled(row, col) ? (
-            <rect
-              key={`${row}-${col}`}
-              x={col * cellSize + 0.5}
-              y={row * cellSize + 0.5}
-              width={cellSize - 1}
-              height={cellSize - 1}
-              fill={fg}
-              rx="0.5"
-            />
-          ) : null
-        )
-      )}
-    </svg>
-  );
-};
-
 /* ══════════ RADAR CANVAS ══════════ */
 const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
   const canvasRef = useRef(null);
@@ -205,18 +144,12 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(angleRef.current);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
+        ctx.beginPath(); ctx.moveTo(0, 0);
         ctx.arc(0, 0, maxR, 0, Math.PI / 2.5);
         ctx.closePath();
-        ctx.fillStyle = gr;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(maxR, 0);
-        ctx.strokeStyle = 'rgba(167,139,250,0.7)';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        ctx.fillStyle = gr; ctx.fill();
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(maxR, 0);
+        ctx.strokeStyle = 'rgba(167,139,250,0.7)'; ctx.lineWidth = 1.5; ctx.stroke();
         ctx.restore();
       }
 
@@ -245,7 +178,6 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
 
       rafRef.current = requestAnimationFrame(draw);
     };
-
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
   }, [devices, isScanning, isDark]);
@@ -288,214 +220,64 @@ const RadarCanvas = ({ devices, isScanning, isDark, onDeviceClick }) => {
   );
 };
 
-/* ══════════ CONNECT MODAL ══════════ */
-const ConnectModal = ({ device, isDark, onClose, onProceed, ablyChannel }) => {
-  const [step, setStep] = useState('generating');
-  const [offerCode, setOfferCode] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [errMsg, setErrMsg] = useState('');
-  const [countdown, setCountdown] = useState(120);
-
-  const pcRef = useRef(null);
-  const dcRef = useRef(null);
-  const keyRef = useRef(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { key, b64: keyB64 } = await makeSessionKey();
-        keyRef.current = key;
-
-        const pc = new RTCPeerConnection(RTC_CONFIG);
-        pcRef.current = pc;
-        const dc = pc.createDataChannel('av', { ordered: true });
-        dcRef.current = dc;
-
-        await new Promise(res => {
-          pc.onicecandidate = e => { if (!e.candidate) res(); };
-          pc.createOffer().then(o => pc.setLocalDescription(o));
-        });
-
-        if (cancelled) { pc.close(); return; }
-
-        const payload = {
-          v: 1,
-          sdp: pc.localDescription.sdp,
-          type: pc.localDescription.type,
-          key: keyB64,
-          fromId: MY_ID,
-          toId: device.id,
-        };
-        const code = btoa(JSON.stringify(payload));
-        setOfferCode(code);
-        setStep('show');
-
-        // Send via Ably for auto-connect
-        if (ablyChannel) {
-          ablyChannel.publish('webrtc-offer', { ...payload, targetId: device.id });
-          ablyChannel.subscribe('webrtc-answer', async (msg) => {
-            if (msg.data.targetId !== MY_ID) return;
-            try {
-              await pc.setRemoteDescription({ type: msg.data.type, sdp: msg.data.sdp });
-            } catch (e) { console.warn('Answer error:', e.message); }
-          });
-        }
-
-        pc.onconnectionstatechange = () => {
-          if (pc.connectionState === 'connected' && !cancelled) setStep('paired');
-          if ((pc.connectionState === 'failed' || pc.connectionState === 'disconnected') && !cancelled) {
-            setErrMsg('Connection failed. Try copying the offer code manually.');
-            setStep('error');
-          }
-        };
-      } catch (e) {
-        if (!cancelled) { setErrMsg(e.message); setStep('error'); }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (step !== 'show') return;
-    const t = setInterval(() => setCountdown(c => {
-      if (c <= 1) {
-        clearInterval(t);
-        if (step === 'show') { setErrMsg('Code expired. Close and try again.'); setStep('error'); }
-        return 0;
-      }
-      return c - 1;
-    }), 1000);
-    return () => clearInterval(t);
-  }, [step]);
-
-  const copyCode = () => {
-    navigator.clipboard.writeText(offerCode).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleProceed = () =>
-    onProceed({ pc: pcRef.current, dc: dcRef.current, key: keyRef.current, remoteName: device?.name });
-
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()}
-        className={`relative rounded-3xl border shadow-2xl w-full max-w-sm overflow-hidden
-          ${isDark ? 'bg-slate-900/95 border-violet-500/30' : 'bg-white border-violet-300'}`}>
-        <div className="h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500" />
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-xl flex items-center justify-center">
-                <Signal className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>Connect to Device</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{device?.name}</p>
-              </div>
-            </div>
-            <button onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-slate-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {step === 'generating' && (
-            <div className="flex flex-col items-center gap-4 py-8">
-              <Loader className="w-8 h-8 text-violet-400 animate-spin" />
-              <p className={`text-sm font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                Setting up encrypted connection…
-              </p>
-            </div>
-          )}
-
-          {step === 'show' && (
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <div className={`p-3 rounded-2xl border ${isDark ? 'bg-slate-800/60 border-violet-500/20' : 'bg-violet-50 border-violet-200'}`}>
-                  <SimpleQR value={offerCode.slice(0, 60)} size={160} isDark={isDark} />
-                </div>
-              </div>
-
-              <div className="text-center">
-                <p className={`text-xs font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  If auto-connect doesn't work, copy this code manually
-                </p>
-                <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  On the other device → click Receive → paste the code
-                </p>
-              </div>
-
-              <div className={`rounded-xl border p-3 ${isDark ? 'bg-slate-800/60 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
-                <p className={`text-[9px] font-mono break-all leading-relaxed ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
-                  {offerCode.slice(0, 100)}…
-                </p>
-              </div>
-
-              <button onClick={copyCode}
-                className={`w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all
-                  ${copied
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                    : 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
-                  }`}>
-                {copied ? <><Check className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy Offer Code</>}
-              </button>
-
-              <div className="flex items-center justify-center gap-2">
-                <div className={`text-xs font-mono px-2 py-1 rounded-lg ${isDark ? 'bg-slate-800 text-violet-400' : 'bg-violet-50 text-violet-600'}`}>
-                  {countdown}s
-                </div>
-                <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>until code expires</span>
-                <Loader className="w-3 h-3 animate-spin text-violet-400 ml-2" />
-                <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>waiting…</span>
-              </div>
-            </div>
-          )}
-
-          {step === 'paired' && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-500/30">
-                <Check className="w-8 h-8 text-white" />
-              </div>
-              <div className="text-center">
-                <p className={`font-bold text-base mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Devices Connected!</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Secure P2P channel ready with <span className="text-violet-400 font-semibold">{device?.name}</span>
-                </p>
-              </div>
-              <div className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-xs
-                ${isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700'}`}>
-                <span className="flex items-center gap-1"><Lock className="w-3 h-3" /> E2E</span>
-                <span className="flex items-center gap-1"><Shield className="w-3 h-3" /> AES-GCM 256</span>
-                <span className="flex items-center gap-1"><Signal className="w-3 h-3" /> WebRTC P2P</span>
-              </div>
-              <button onClick={handleProceed}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-semibold text-sm shadow-lg hover:scale-[1.02] transition-all flex items-center justify-center gap-2">
-                <Upload className="w-4 h-4" /> Choose Files to Send
-              </button>
-            </div>
-          )}
-
-          {step === 'error' && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${isDark ? 'bg-red-500/20' : 'bg-red-50'}`}>
-                <X className="w-7 h-7 text-red-500" />
-              </div>
-              <div className="text-center">
-                <p className={`font-bold text-base mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Connection Error</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{errMsg}</p>
-              </div>
-              <button onClick={onClose}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-semibold text-sm hover:scale-[1.02] transition-all">
-                Close
-              </button>
-            </div>
-          )}
-        </div>
+/* ══════════ INCOMING REQUEST TOAST ══════════ */
+const IncomingRequest = ({ fromName, isDark, onAccept, onDecline }) => (
+  <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-sm px-4">
+    <div className={`rounded-2xl border shadow-2xl p-4 flex items-center gap-4 backdrop-blur-xl animate-bounce-once
+      ${isDark ? 'bg-slate-900/95 border-violet-500/40' : 'bg-white border-violet-300'}`}>
+      <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-xl flex items-center justify-center flex-shrink-0 animate-pulse">
+        <Upload className="w-5 h-5 text-white rotate-180" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>Incoming files</p>
+        <p className={`text-xs truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          <span className="text-violet-400 font-semibold">{fromName}</span> wants to send you files
+        </p>
+      </div>
+      <div className="flex gap-2 flex-shrink-0">
+        <button onClick={onDecline}
+          className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-110
+            ${isDark ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' : 'bg-red-50 border-red-200 text-red-500 hover:bg-red-100'}`}>
+          <X className="w-4 h-4" />
+        </button>
+        <button onClick={onAccept}
+          className="w-9 h-9 rounded-xl flex items-center justify-center bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg hover:scale-110 transition-all">
+          <Check className="w-4 h-4" />
+        </button>
       </div>
     </div>
-  );
-};
+  </div>
+);
+
+/* ══════════ CONNECTING OVERLAY ══════════ */
+const ConnectingOverlay = ({ deviceName, isDark, onCancel }) => (
+  <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+    <div className={`relative rounded-3xl border shadow-2xl w-full max-w-xs p-8 text-center overflow-hidden
+      ${isDark ? 'bg-slate-900/95 border-violet-500/30' : 'bg-white border-violet-300'}`}>
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500" />
+      <div className="w-16 h-16 mx-auto mb-4 relative">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center">
+          <Signal className="w-8 h-8 text-white" />
+        </div>
+        <div className="absolute inset-0 rounded-2xl bg-violet-400/30 animate-ping" />
+      </div>
+      <p className={`font-bold text-base mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>Connecting…</p>
+      <p className={`text-xs mb-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+        Waiting for <span className="text-violet-400 font-semibold">{deviceName}</span> to accept
+      </p>
+      <div className={`flex items-center justify-center gap-2 text-xs mb-6 px-3 py-2 rounded-xl border
+        ${isDark ? 'bg-slate-800/60 border-slate-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+        <Lock className="w-3 h-3 text-violet-400" />
+        AES-GCM 256-bit end-to-end encrypted
+      </div>
+      <button onClick={onCancel}
+        className={`text-xs px-4 py-2 rounded-xl border transition-all hover:scale-105
+          ${isDark ? 'border-slate-600 text-gray-400 hover:bg-slate-800' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+        Cancel
+      </button>
+    </div>
+  </div>
+);
 
 /* ══════════ SEND MODAL ══════════ */
 const SendModal = ({ device, isDark, onClose, rtcSession }) => {
@@ -514,14 +296,9 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
   const handleSend = useCallback(async () => {
     if (!files.length || !rtcSession?.dc || !rtcSession?.key) return;
     const { dc, key } = rtcSession;
-    if (dc.readyState !== 'open') {
-      setErrMsg('Connection lost. Please reconnect and try again.');
-      setStatus('error');
-      return;
-    }
+    if (dc.readyState !== 'open') { setErrMsg('Connection lost.'); setStatus('error'); return; }
     setStatus('sending');
     abortRef.current = false;
-    const totalBytes = files.reduce((s, f) => s + f.size, 0);
     try {
       for (let fi = 0; fi < files.length; fi++) {
         if (abortRef.current) break;
@@ -563,15 +340,10 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
       }
       setProgress(100);
       setStatus('success');
-    } catch (e) {
-      setErrMsg(e.message);
-      setStatus('error');
-    }
+    } catch (e) { setErrMsg(e.message); setStatus('error'); }
   }, [files, rtcSession, speed]);
 
   useEffect(() => () => { abortRef.current = true; }, []);
-
-  const DevIcon = device ? getDeviceIcon(device.type) : Globe;
   const totalBytes = files.reduce((s, f) => s + f.size, 0);
 
   return (
@@ -584,7 +356,7 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
               <div className={`p-2.5 rounded-xl ${isDark ? 'bg-violet-500/10' : 'bg-violet-50'}`}>
-                <DevIcon className={`w-5 h-5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+                {(() => { const I = getDeviceIcon(device?.type); return <I className={`w-5 h-5 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />; })()}
               </div>
               <div>
                 <p className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -592,7 +364,7 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                 </p>
                 <p className={`text-xs flex items-center gap-1 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                   <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse inline-block" />
-                  AES-GCM 256-bit encrypted
+                  Secure P2P · AES-GCM 256-bit
                 </p>
               </div>
             </div>
@@ -614,7 +386,6 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                 <p className={`font-semibold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>Drop files or click to browse</p>
                 <p className={`text-xs mt-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Any format · End-to-end encrypted</p>
               </div>
-
               {files.length > 0 && (
                 <div className={`rounded-2xl border overflow-hidden mb-4 ${isDark ? 'border-slate-700/50' : 'border-gray-200'}`}>
                   <div className={`px-4 py-2 flex items-center justify-between border-b text-xs font-semibold
@@ -642,13 +413,10 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                   </div>
                 </div>
               )}
-
               <button onClick={handleSend} disabled={!files.length}
                 className={`w-full py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all
-                  ${files.length
-                    ? 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
-                    : isDark ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}>
+                  ${files.length ? 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
+                    : isDark ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
                 <Zap className="w-4 h-4" />
                 Send {files.length > 0 ? `${files.length} file${files.length > 1 ? 's' : ''}` : 'Files'}
               </button>
@@ -663,12 +431,9 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                     <circle cx="40" cy="40" r="34" fill="none" stroke={isDark ? '#3f3f46' : '#e4e4e7'} strokeWidth="5" />
                     <circle cx="40" cy="40" r="34" fill="none" stroke="url(#pg)" strokeWidth="5"
                       strokeLinecap="round" strokeDasharray={`${(progress / 100) * 213.6} 213.6`} />
-                    <defs>
-                      <linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%">
-                        <stop offset="0%" stopColor="#7c3aed" />
-                        <stop offset="100%" stopColor="#ec4899" />
-                      </linearGradient>
-                    </defs>
+                    <defs><linearGradient id="pg" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#7c3aed" /><stop offset="100%" stopColor="#ec4899" />
+                    </linearGradient></defs>
                   </svg>
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className={`text-base font-black ${isDark ? 'text-white' : 'text-gray-900'}`}>{Math.round(progress)}%</span>
@@ -686,8 +451,7 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                 ))}
               </div>
               <div className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-slate-700' : 'bg-gray-200'}`}>
-                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600 transition-all"
-                  style={{ width: `${progress}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600 transition-all" style={{ width: `${progress}%` }} />
               </div>
             </div>
           )}
@@ -706,10 +470,7 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                   {files.length} file{files.length > 1 ? 's' : ''} ({formatSize(totalBytes)}) delivered
                 </p>
               </div>
-              <button onClick={onClose}
-                className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-bold text-sm hover:scale-[1.02] transition-all">
-                Done
-              </button>
+              <button onClick={onClose} className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-bold text-sm hover:scale-[1.02] transition-all">Done</button>
             </div>
           )}
 
@@ -722,10 +483,7 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                 <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Transfer Failed</p>
                 <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{errMsg}</p>
               </div>
-              <button onClick={onClose}
-                className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-bold text-sm hover:scale-[1.02] transition-all">
-                Close
-              </button>
+              <button onClick={onClose} className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-bold text-sm hover:scale-[1.02] transition-all">Close</button>
             </div>
           )}
         </div>
@@ -734,282 +492,53 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
   );
 };
 
-/* ══════════ RECEIVE MODAL ══════════ */
-const ReceiveModal = ({ isDark, onClose, ablyChannel }) => {
-  const [step, setStep] = useState('paste');
-  const [offerInput, setOfferInput] = useState('');
-  const [answerCode, setAnswerCode] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [received, setReceived] = useState([]);
-  const [progress, setProgress] = useState(0);
-  const [currentFile, setCurrentFile] = useState('');
-  const [errMsg, setErrMsg] = useState('');
-
-  const pcRef = useRef(null);
-  const keyRef = useRef(null);
-  const recvRef = useRef({ chunks: [], meta: null, got: 0 });
-
-  const accept = useCallback(async () => {
-    if (!offerInput.trim()) return;
-    try {
-      let payload;
-      try {
-        payload = JSON.parse(atob(offerInput.trim()));
-      } catch {
-        setErrMsg('Invalid offer code. Please copy it again from the sender.');
-        setStep('error');
-        return;
-      }
-
-      const key = await keyFromB64(payload.key);
-      keyRef.current = key;
-
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      pcRef.current = pc;
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'connected') setStep('receiving');
-        if (pc.connectionState === 'failed') { setErrMsg('Connection failed. Try again.'); setStep('error'); }
-      };
-
-      pc.ondatachannel = (e) => {
-        const dc = e.channel;
-        dc.binaryType = 'arraybuffer';
-        dc.onmessage = async (ev) => {
-          if (typeof ev.data === 'string') {
-            const msg = JSON.parse(ev.data);
-            if (msg.type === 'meta') {
-              recvRef.current = { chunks: [], meta: msg, got: 0 };
-              setCurrentFile(msg.name);
-              setProgress(0);
-            }
-            if (msg.type === 'done') {
-              const { chunks, meta } = recvRef.current;
-              const totalLen = chunks.reduce((n, c) => n + c.byteLength, 0);
-              const assembled = new Uint8Array(totalLen);
-              let off = 0;
-              for (const c of chunks) { assembled.set(new Uint8Array(c), off); off += c.byteLength; }
-              try {
-                const plainBuf = await decryptBuf(assembled.buffer, keyRef.current);
-                const blob = new Blob([plainBuf], { type: meta.mime });
-                const url = URL.createObjectURL(blob);
-                setReceived(r => [...r, { name: meta.name, url, size: meta.size }]);
-                setProgress(100);
-              } catch {
-                setErrMsg('Decryption failed — file may be corrupted or key mismatch.');
-                setStep('error');
-                return;
-              }
-              if (!msg.more) setStep('done');
-            }
-          } else {
-            recvRef.current.chunks.push(ev.data);
-            recvRef.current.got += ev.data.byteLength;
-            const { got, meta } = recvRef.current;
-            if (meta) setProgress(Math.min(100, (got / meta.encryptedSize) * 100));
-          }
-        };
-      };
-
-      await pc.setRemoteDescription({ type: payload.type, sdp: payload.sdp });
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-
-      await new Promise(res => {
-        pc.onicecandidate = e => { if (!e.candidate) res(); };
-      });
-
-      const ansPayload = {
-        v: 1, type: pc.localDescription.type,
-        sdp: pc.localDescription.sdp, name: MY_NAME, id: MY_ID,
-        targetId: payload.fromId,
-      };
-      const code = btoa(JSON.stringify(ansPayload));
-      setAnswerCode(code);
-
-      if (ablyChannel && payload.fromId) {
-        ablyChannel.publish('webrtc-answer', ansPayload);
-      }
-
-      setStep('connecting');
-    } catch (e) {
-      setErrMsg('Error: ' + e.message);
-      setStep('error');
-    }
-  }, [offerInput, ablyChannel]);
-
-  useEffect(() => () => { pcRef.current?.close(); }, []);
-
-  const copyAnswer = () => {
-    navigator.clipboard.writeText(answerCode).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()}
-        className={`relative rounded-3xl border shadow-2xl w-full max-w-sm overflow-hidden
-          ${isDark ? 'bg-slate-900/95 border-violet-500/30' : 'bg-white border-violet-300'}`}>
-        <div className="h-1 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500" />
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-gradient-to-br from-violet-500 to-fuchsia-600 rounded-xl flex items-center justify-center">
-                <Upload className="w-5 h-5 text-white rotate-180" />
-              </div>
-              <div>
-                <p className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>Receive Files</p>
-                <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Paste sender's offer code</p>
-              </div>
+/* ══════════ RECEIVED FILES DRAWER ══════════ */
+const ReceiveDrawer = ({ isDark, received, onClose }) => (
+  <div className="fixed inset-0 z-[90] flex items-end justify-center p-4 bg-black/60 backdrop-blur-md" onClick={onClose}>
+    <div onClick={e => e.stopPropagation()}
+      className={`relative rounded-3xl border shadow-2xl w-full max-w-md overflow-hidden mb-2
+        ${isDark ? 'bg-slate-900/95 border-violet-500/30' : 'bg-white border-violet-300'}`}>
+      <div className="h-1 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400" />
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl flex items-center justify-center">
+              <Check className="w-5 h-5 text-white" />
             </div>
-            <button onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-slate-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
-              <X className="w-4 h-4" />
-            </button>
+            <div>
+              <p className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>Files Received!</p>
+              <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{received.length} file{received.length !== 1 ? 's' : ''} ready to save</p>
+            </div>
           </div>
-
-          {step === 'paste' && (
-            <div className="space-y-4">
-              <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                On the sender's device, click a peer on the radar → copy the offer code → paste it here.
-              </p>
-              <textarea value={offerInput} onChange={e => setOfferInput(e.target.value)}
-                placeholder="Paste offer code here…" rows={4}
-                className={`w-full text-[10px] font-mono rounded-xl border px-3 py-2 resize-none outline-none
-                  ${isDark
-                    ? 'bg-slate-800/60 border-slate-600 text-gray-300 placeholder-gray-600 focus:border-violet-500'
-                    : 'bg-gray-50 border-gray-300 text-gray-700 placeholder-gray-400 focus:border-violet-400'
-                  }`}
-              />
-              <button onClick={accept} disabled={!offerInput.trim()}
-                className={`w-full py-3 rounded-xl font-bold text-sm transition-all
-                  ${offerInput.trim()
-                    ? 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
-                    : isDark ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}>
-                Connect & Accept
-              </button>
+          <button onClick={onClose} className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-slate-800 text-gray-400' : 'hover:bg-gray-100 text-gray-500'}`}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="space-y-2 max-h-64 overflow-y-auto">
+          {received.map((f, i) => (
+            <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${isDark ? 'border-slate-700/50' : 'border-gray-200'}`}>
+              <File className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
+              <div className="flex-1 min-w-0">
+                <p className={`text-xs font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{f.name}</p>
+                <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{formatSize(f.size)}</p>
+              </div>
+              <a href={f.url} download={f.name}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white whitespace-nowrap hover:scale-105 transition-all">
+                Save
+              </a>
             </div>
-          )}
-
-          {step === 'connecting' && (
-            <div className="space-y-4">
-              <div className={`flex items-center gap-2 text-xs p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700 text-gray-400' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                <Loader className="w-3 h-3 animate-spin text-violet-400 flex-shrink-0" />
-                Waiting for sender to finalize connection…
-              </div>
-              <div>
-                <p className={`text-xs font-semibold mb-2 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                  If not auto-connected, send this answer code to the sender:
-                </p>
-                <div className={`rounded-xl border p-3 mb-3 ${isDark ? 'bg-slate-800/60 border-slate-600' : 'bg-gray-50 border-gray-200'}`}>
-                  <p className={`text-[9px] font-mono break-all leading-relaxed ${isDark ? 'text-violet-300' : 'text-violet-700'}`}>
-                    {answerCode.slice(0, 100)}…
-                  </p>
-                </div>
-                <button onClick={copyAnswer}
-                  className={`w-full py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all
-                    ${copied
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
-                    }`}>
-                  {copied ? <><Check className="w-4 h-4" /> Copied!</> : <><Copy className="w-4 h-4" /> Copy Answer Code</>}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 'receiving' && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Receiving files…</p>
-              </div>
-              {currentFile && (
-                <>
-                  <p className={`text-xs truncate ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{currentFile}</p>
-                  <div className={`h-2 rounded-full overflow-hidden ${isDark ? 'bg-slate-700' : 'bg-gray-200'}`}>
-                    <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-600 transition-all"
-                      style={{ width: `${progress}%` }} />
-                  </div>
-                  <p className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{Math.round(progress)}%</p>
-                </>
-              )}
-              {received.map((f, i) => (
-                <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${isDark ? 'border-slate-700/50' : 'border-gray-200'}`}>
-                  <File className={`w-4 h-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{f.name}</p>
-                    <p className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{formatSize(f.size)}</p>
-                  </div>
-                  <a href={f.url} download={f.name}
-                    className="text-xs font-bold px-3 py-1 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white">
-                    Save
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {step === 'done' && (
-            <div className="flex flex-col items-center gap-4 py-2">
-              <div className="relative">
-                <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-3xl flex items-center justify-center shadow-xl">
-                  <Check className="w-10 h-10 text-white" />
-                </div>
-                <div className="absolute inset-0 rounded-3xl bg-emerald-400/25 animate-ping" />
-              </div>
-              <p className={`text-xl font-black ${isDark ? 'text-white' : 'text-gray-900'}`}>All Files Received!</p>
-              <div className="w-full space-y-2">
-                {received.map((f, i) => (
-                  <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${isDark ? 'border-slate-700/50' : 'border-gray-200'}`}>
-                    <File className={`w-4 h-4 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
-                    <p className={`flex-1 text-xs font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{f.name}</p>
-                    <a href={f.url} download={f.name}
-                      className="text-xs font-bold px-3 py-1 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white whitespace-nowrap">
-                      Save
-                    </a>
-                  </div>
-                ))}
-              </div>
-              <button onClick={onClose}
-                className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-bold text-sm hover:scale-[1.02] transition-all">
-                Done
-              </button>
-            </div>
-          )}
-
-          {step === 'error' && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${isDark ? 'bg-red-500/20' : 'bg-red-50'}`}>
-                <X className="w-7 h-7 text-red-500" />
-              </div>
-              <div className="text-center">
-                <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Error</p>
-                <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{errMsg}</p>
-              </div>
-              <button onClick={onClose}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white font-semibold text-sm hover:scale-[1.02] transition-all">
-                Close
-              </button>
-            </div>
-          )}
+          ))}
         </div>
       </div>
     </div>
-  );
-};
+  </div>
+);
 
 /* ══════════ ROOM SETUP ══════════ */
 const RoomSetup = ({ isDark, onJoin }) => {
   const [code, setCode] = useState('');
-  const [generated, setGenerated] = useState(false);
 
-  const generateCode = () => {
-    const c = Math.random().toString(36).slice(2, 8).toUpperCase();
-    setCode(c);
-    setGenerated(true);
-  };
+  const generateCode = () => setCode(Math.random().toString(36).slice(2, 8).toUpperCase());
 
   return (
     <div className={`rounded-3xl border p-5 ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white/80 border-gray-200'}`}>
@@ -1022,39 +551,24 @@ const RoomSetup = ({ isDark, onJoin }) => {
           <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Both devices need the same code</p>
         </div>
       </div>
-
       <div className="flex gap-2 mb-3">
-        <input
-          value={code}
-          onChange={e => { setCode(e.target.value.toUpperCase().slice(0, 8)); setGenerated(false); }}
+        <input value={code} onChange={e => setCode(e.target.value.toUpperCase().slice(0, 8))}
           placeholder="ENTER CODE"
           className={`flex-1 text-center text-base font-mono font-bold tracking-widest rounded-xl border px-3 py-2.5 outline-none transition-colors
-            ${isDark
-              ? 'bg-slate-900/60 border-slate-600 text-white placeholder-gray-600 focus:border-violet-500'
-              : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400 focus:border-violet-400'
-            }`}
-        />
+            ${isDark ? 'bg-slate-900/60 border-slate-600 text-white placeholder-gray-600 focus:border-violet-500'
+              : 'bg-gray-50 border-gray-300 text-gray-900 placeholder-gray-400 focus:border-violet-400'}`} />
         <button onClick={generateCode}
           className={`px-3 py-2 rounded-xl border text-xs font-bold transition-all hover:scale-105
             ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-400 hover:bg-violet-500/20' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100'}`}>
           New
         </button>
       </div>
-
       <button onClick={() => code.trim() && onJoin(code.trim())} disabled={!code.trim()}
         className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all
-          ${code.trim()
-            ? 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
-            : isDark ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-          }`}>
-        {generated ? '✦ Start Scanning' : 'Join Room & Scan'}
+          ${code.trim() ? 'bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-lg hover:scale-[1.02]'
+            : isDark ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}>
+        Join Room & Scan
       </button>
-
-      {generated && (
-        <p className={`text-center text-[10px] mt-2 font-semibold ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>
-          Share code <strong>{code}</strong> with the other device
-        </p>
-      )}
     </div>
   );
 };
@@ -1066,25 +580,29 @@ const AirDrop = () => {
   const [devices, setDevices] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
   const [roomCode, setRoomCode] = useState(null);
-  const [ablyStatus, setAblyStatus] = useState('idle'); // idle | connecting | connected | error
-  const [selectedDev, setSelectedDev] = useState(null);
-  const [showConnect, setShowConnect] = useState(false);
-  const [showSend, setShowSend] = useState(false);
-  const [showReceive, setShowReceive] = useState(false);
+  const [ablyStatus, setAblyStatus] = useState('idle');
+
+  // Sender state
+  const [connectingTo, setConnectingTo] = useState(null);
   const [rtcSession, setRtcSession] = useState(null);
+  const [showSend, setShowSend] = useState(false);
+
+  // Receiver state
+  const [incomingRequest, setIncomingRequest] = useState(null);
+  const [receivedFiles, setReceivedFiles] = useState([]);
+  const [showReceiveDrawer, setShowReceiveDrawer] = useState(false);
+
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const ablyRef = useRef(null);
   const channelRef = useRef(null);
   const seenRef = useRef(new Set());
   const pingTimers = useRef({});
+  const pendingOfferRef = useRef(null);
 
   const addPeer = useCallback((id, name, devType) => {
     if (id === MY_ID) return;
-    setDevices(d => {
-      if (d.find(x => x.id === id)) return d;
-      return [...d, { id, name, type: devType, signal: 90 }];
-    });
+    setDevices(d => d.find(x => x.id === id) ? d : [...d, { id, name, type: devType }]);
     seenRef.current.add(id);
     clearTimeout(pingTimers.current[id]);
     pingTimers.current[id] = setTimeout(() => {
@@ -1093,10 +611,131 @@ const AirDrop = () => {
     }, 20000);
   }, []);
 
-  const joinRoom = useCallback((code) => {
-    if (ablyRef.current) {
-      try { ablyRef.current.close(); } catch (e) {}
+  /* ── Receiver accepts incoming ── */
+  const handleAcceptIncoming = useCallback(async () => {
+    if (!incomingRequest) return;
+    const { fromName, fromId, offerPayload } = incomingRequest;
+    setIncomingRequest(null);
+
+    try {
+      const key = await keyFromB64(offerPayload.key);
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      const recvState = { chunks: [], meta: null, got: 0 };
+      const allReceived = [];
+
+      pc.ondatachannel = (e) => {
+        const dc = e.channel;
+        dc.binaryType = 'arraybuffer';
+        dc.onmessage = async (ev) => {
+          if (typeof ev.data === 'string') {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === 'meta') {
+              recvState.chunks = []; recvState.meta = msg; recvState.got = 0;
+            }
+            if (msg.type === 'done') {
+              const totalLen = recvState.chunks.reduce((n, c) => n + c.byteLength, 0);
+              const assembled = new Uint8Array(totalLen);
+              let off = 0;
+              for (const c of recvState.chunks) { assembled.set(new Uint8Array(c), off); off += c.byteLength; }
+              try {
+                const plainBuf = await decryptBuf(assembled.buffer, key);
+                const blob = new Blob([plainBuf], { type: recvState.meta.mime });
+                const url = URL.createObjectURL(blob);
+                allReceived.push({ name: recvState.meta.name, url, size: recvState.meta.size });
+                if (!msg.more) { setReceivedFiles([...allReceived]); setShowReceiveDrawer(true); }
+              } catch (e) { console.error('Decrypt failed', e); }
+            }
+          } else {
+            recvState.chunks.push(ev.data);
+            recvState.got += ev.data.byteLength;
+          }
+        };
+      };
+
+      await pc.setRemoteDescription({ type: offerPayload.type, sdp: offerPayload.sdp });
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      // Wait for ICE
+      await new Promise(res => {
+        if (pc.iceGatheringState === 'complete') { res(); return; }
+        pc.onicecandidate = e => { if (!e.candidate) res(); };
+        setTimeout(res, 5000); // timeout fallback
+      });
+
+      channelRef.current?.publish('webrtc-answer', {
+        type: pc.localDescription.type,
+        sdp: pc.localDescription.sdp,
+        targetId: fromId,
+        fromId: MY_ID,
+        fromName: MY_NAME,
+      });
+    } catch (e) {
+      console.error('Accept error:', e);
     }
+  }, [incomingRequest]);
+
+  /* ── Sender taps device ── */
+  const handleDeviceClick = useCallback(async (device) => {
+    if (!channelRef.current) return;
+    setConnectingTo(device);
+
+    try {
+      const { key, b64: keyB64 } = await makeSessionKey();
+      const pc = new RTCPeerConnection(RTC_CONFIG);
+      const dc = pc.createDataChannel('av', { ordered: true });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Wait for ICE gathering
+      await new Promise(res => {
+        if (pc.iceGatheringState === 'complete') { res(); return; }
+        pc.onicecandidate = e => { if (!e.candidate) res(); };
+        setTimeout(res, 5000);
+      });
+
+      // One-time answer listener
+      const answerHandler = async (msg) => {
+        if (msg.data.targetId !== MY_ID) return;
+        if (msg.data.fromId !== device.id) return;
+        channelRef.current?.unsubscribe('webrtc-answer', answerHandler);
+        try { await pc.setRemoteDescription({ type: msg.data.type, sdp: msg.data.sdp }); }
+        catch (e) { console.warn('setRemoteDescription error:', e.message); }
+      };
+      channelRef.current.subscribe('webrtc-answer', answerHandler);
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'connected') {
+          setConnectingTo(null);
+          setRtcSession({ pc, dc, key, remoteName: device.name });
+          setShowSend(true);
+        }
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          setConnectingTo(null);
+          channelRef.current?.unsubscribe('webrtc-answer', answerHandler);
+        }
+      };
+
+      // Broadcast the offer — only the target device will respond
+      channelRef.current.publish('webrtc-offer', {
+        v: 1,
+        sdp: pc.localDescription.sdp,
+        type: pc.localDescription.type,
+        key: keyB64,
+        fromId: MY_ID,
+        fromName: MY_NAME,
+        targetId: device.id,
+      });
+    } catch (e) {
+      console.error('Offer error:', e);
+      setConnectingTo(null);
+    }
+  }, []);
+
+  /* ── Join room ── */
+  const joinRoom = useCallback((code) => {
+    if (ablyRef.current) try { ablyRef.current.close(); } catch (e) {}
     seenRef.current.clear();
     setDevices([]);
     setRoomCode(code);
@@ -1119,17 +758,23 @@ const AirDrop = () => {
           addPeer(id, name, devType);
         });
 
-        ch.subscribe('pong', (msg) => {
-          const { id, name, devType } = msg.data;
-          addPeer(id, name, devType);
-        });
+        ch.subscribe('pong', (msg) => addPeer(msg.data.id, msg.data.name, msg.data.devType));
 
         ch.subscribe('bye', (msg) => {
           seenRef.current.delete(msg.data.id);
           setDevices(d => d.filter(x => x.id !== msg.data.id));
         });
 
-        // Announce ourselves
+        // Incoming offer — show Accept/Decline toast
+        ch.subscribe('webrtc-offer', (msg) => {
+          if (msg.data.targetId !== MY_ID) return;
+          setIncomingRequest({
+            fromName: msg.data.fromName,
+            fromId: msg.data.fromId,
+            offerPayload: msg.data,
+          });
+        });
+
         ch.publish('hello', { id: MY_ID, name: MY_NAME, devType: MY_TYPE });
         setTimeout(() => setIsScanning(false), 3000);
       });
@@ -1145,9 +790,7 @@ const AirDrop = () => {
 
   const rescan = () => {
     if (!roomCode || !channelRef.current) return;
-    setIsScanning(true);
-    setDevices([]);
-    seenRef.current.clear();
+    setIsScanning(true); setDevices([]); seenRef.current.clear();
     channelRef.current.publish('hello', { id: MY_ID, name: MY_NAME, devType: MY_TYPE });
     setTimeout(() => setIsScanning(false), 3000);
   };
@@ -1166,12 +809,8 @@ const AirDrop = () => {
     return () => window.removeEventListener('mousemove', h);
   }, []);
 
-  const handleDeviceClick = (dev) => { setSelectedDev(dev); setShowConnect(true); };
-  const handleConnectProceed = (session) => { setRtcSession(session); setShowConnect(false); setShowSend(true); };
-
   const statusDot = { idle: 'bg-gray-400', connecting: 'bg-yellow-400 animate-pulse', connected: 'bg-emerald-400 animate-pulse', error: 'bg-red-400' };
   const statusText = { idle: 'No room', connecting: 'Connecting…', connected: `Room: ${roomCode}`, error: 'Error — retry' };
-
   const card = `rounded-3xl border backdrop-blur-xl ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white/80 border-gray-200'}`;
 
   return (
@@ -1190,7 +829,6 @@ const AirDrop = () => {
         }} />
 
       <div className="relative z-10 flex flex-col h-full">
-        {/* NAV */}
         <header className={`flex-shrink-0 border-b backdrop-blur-2xl ${isDark ? 'bg-slate-900/90 border-violet-500/15' : 'bg-white/95 border-gray-200'}`}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -1208,11 +846,6 @@ const AirDrop = () => {
                 <span className={`w-1.5 h-1.5 rounded-full ${statusDot[ablyStatus]}`} />
                 <span className={isDark ? 'text-violet-300' : 'text-violet-700'}>{statusText[ablyStatus]}</span>
               </div>
-              <button onClick={() => setShowReceive(true)}
-                className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all hover:scale-105
-                  ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300 hover:bg-violet-500/20' : 'bg-violet-50 border-violet-200 text-violet-700 hover:bg-violet-100'}`}>
-                <Upload className="w-3 h-3 rotate-180" /> Receive Files
-              </button>
               <button onClick={toggleTheme}
                 className={`p-2.5 rounded-xl transition-all group ${isDark ? 'bg-slate-800 hover:bg-slate-700' : 'bg-gray-100 hover:bg-gray-200'}`}>
                 {isDark
@@ -1230,7 +863,7 @@ const AirDrop = () => {
                 Instant Wireless Sharing
               </h1>
               <p className={`text-base max-w-xl mx-auto ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                Create a room code, share it with the other device, then transfer files peer-to-peer with end-to-end encryption.
+                Join a room, see nearby devices, tap to send — fully automatic, end-to-end encrypted.
               </p>
             </div>
 
@@ -1245,7 +878,7 @@ const AirDrop = () => {
                       <div>
                         <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Proximity Radar</p>
                         <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          {!roomCode ? 'Enter a room code to start' : devices.length > 0 ? 'Click a device to send files' : 'Waiting for devices in this room…'}
+                          {!roomCode ? 'Enter a room code to start' : devices.length > 0 ? 'Tap a device to send files instantly' : 'Waiting for devices…'}
                         </p>
                       </div>
                     </div>
@@ -1254,8 +887,7 @@ const AirDrop = () => {
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all
                           ${isScanning
                             ? isDark ? 'bg-slate-700/50 border-slate-600 text-slate-400 cursor-not-allowed' : 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
-                            : 'bg-gradient-to-r from-violet-500 to-fuchsia-600 border-transparent text-white shadow-lg hover:scale-105'
-                          }`}>
+                            : 'bg-gradient-to-r from-violet-500 to-fuchsia-600 border-transparent text-white shadow-lg hover:scale-105'}`}>
                         <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
                         {isScanning ? 'Scanning…' : 'Rescan'}
                       </button>
@@ -1265,13 +897,11 @@ const AirDrop = () => {
                     <RadarCanvas devices={devices} isScanning={isScanning} isDark={isDark} onDeviceClick={handleDeviceClick} />
                   </div>
                   {!roomCode && (
-                    <p className={`text-center text-sm mt-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      ← Enter a room code on the right to discover devices
-                    </p>
+                    <p className={`text-center text-sm mt-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>← Enter a room code on the right to discover devices</p>
                   )}
                   {roomCode && !isScanning && devices.length === 0 && (
                     <p className={`text-center text-sm mt-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      No devices in room <strong className="text-violet-400">{roomCode}</strong> yet — make sure the other device uses the same code
+                      No devices in room <strong className="text-violet-400">{roomCode}</strong> — make sure the other device uses the same code
                     </p>
                   )}
                 </div>
@@ -1321,11 +951,6 @@ const AirDrop = () => {
                       })}
                     </div>
                   )}
-                  <button onClick={() => setShowReceive(true)}
-                    className={`sm:hidden mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border text-xs font-semibold
-                      ${isDark ? 'bg-violet-500/10 border-violet-500/20 text-violet-300' : 'bg-violet-50 border-violet-200 text-violet-700'}`}>
-                    <Upload className="w-3 h-3 rotate-180" /> Receive Files
-                  </button>
                 </div>
 
                 <div className={`${card} p-5`}>
@@ -1334,8 +959,8 @@ const AirDrop = () => {
                     {[
                       { n: '01', t: 'Create or enter a room code' },
                       { n: '02', t: 'Share code with other device' },
-                      { n: '03', t: 'Click the device on the radar' },
-                      { n: '04', t: 'Files sent end-to-end encrypted' },
+                      { n: '03', t: 'Tap a device on the radar' },
+                      { n: '04', t: 'Other device taps Accept → files transfer!' },
                     ].map(({ n, t }) => (
                       <div key={n} className={`flex items-center gap-3 p-2.5 rounded-xl border ${isDark ? 'bg-slate-900/50 border-slate-700/30' : 'bg-gray-50 border-gray-100'}`}>
                         <span className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center text-white text-[9px] font-black flex-shrink-0">{n}</span>
@@ -1350,14 +975,34 @@ const AirDrop = () => {
         </div>
       </div>
 
-      {showConnect && selectedDev && (
-        <ConnectModal device={selectedDev} isDark={isDark} onClose={() => { setShowConnect(false); setSelectedDev(null); }} onProceed={handleConnectProceed} ablyChannel={channelRef.current} />
+      {/* Connecting overlay — sender waiting for accept */}
+      {connectingTo && (
+        <ConnectingOverlay deviceName={connectingTo.name} isDark={isDark} onCancel={() => setConnectingTo(null)} />
       )}
-      {showSend && selectedDev && (
-        <SendModal device={selectedDev} isDark={isDark} onClose={() => { setShowSend(false); setSelectedDev(null); setRtcSession(null); }} rtcSession={rtcSession} />
+
+      {/* Incoming request toast — receiver sees this */}
+      {incomingRequest && (
+        <IncomingRequest
+          fromName={incomingRequest.fromName}
+          isDark={isDark}
+          onAccept={handleAcceptIncoming}
+          onDecline={() => setIncomingRequest(null)}
+        />
       )}
-      {showReceive && (
-        <ReceiveModal isDark={isDark} onClose={() => setShowReceive(false)} ablyChannel={channelRef.current} />
+
+      {/* Send modal — opens after P2P connected */}
+      {showSend && !connectingTo && rtcSession && (
+        <SendModal
+          device={devices.find(d => d.name === rtcSession.remoteName)}
+          isDark={isDark}
+          onClose={() => { setShowSend(false); setRtcSession(null); }}
+          rtcSession={rtcSession}
+        />
+      )}
+
+      {/* Received files drawer */}
+      {showReceiveDrawer && (
+        <ReceiveDrawer isDark={isDark} received={receivedFiles} onClose={() => setShowReceiveDrawer(false)} />
       )}
     </div>
   );
