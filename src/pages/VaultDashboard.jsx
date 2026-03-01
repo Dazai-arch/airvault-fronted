@@ -219,60 +219,81 @@ const formatBytes = (bytes) => {
   return `${(bytes / Math.pow(k, i)).toFixed(i ? 1 : 0)} ${s[i]}`;
 };
 
-/* ─── QR Code Generator (pure JS, no library) ─── */
-const SimpleQRCode = ({ text, size = 160, isDark }) => {
-  const canvasRef = useRef(null);
+/* ─── Real QR Code via qrcode npm CDN ─── */
+const loadQRLib = () =>
+  new Promise((resolve) => {
+    if (window.__qrcodeLib) { resolve(window.__qrcodeLib); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
+    s.onload = () => { window.__qrcodeLib = window.QRCode; resolve(window.__qrcodeLib); };
+    s.onerror = () => resolve(null);
+    document.head.appendChild(s);
+  });
+
+const RealQRCode = ({ text, size = 200, isDark, canvasRef: externalRef }) => {
+  const internalRef = useRef(null);
+  const canvasRef   = externalRef || internalRef;
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (!canvasRef.current || !text) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    canvas.width = size;
-    canvas.height = size;
-
-    // Simple visual QR placeholder with encoded pattern
-    ctx.fillStyle = isDark ? "#0f172a" : "#ffffff";
-    ctx.fillRect(0, 0, size, size);
-
-    const modules = 25;
-    const cellSize = size / modules;
-    ctx.fillStyle = isDark ? "#22d3ee" : "#0891b2";
-
-    // Encode text into a deterministic pattern
-    const hash = text.split("").reduce((acc, c) => ((acc << 5) - acc + c.charCodeAt(0)) | 0, 0);
-    const rng = (seed) => {
-      let s = seed;
-      return () => {
-        s = (s * 1103515245 + 12345) & 0x7fffffff;
-        return s / 0x7fffffff;
-      };
-    };
-    const rand = rng(Math.abs(hash));
-
-    for (let r = 0; r < modules; r++) {
-      for (let c = 0; c < modules; c++) {
-        // Finder patterns (corners)
-        const isFinderTL = r < 7 && c < 7;
-        const isFinderTR = r < 7 && c >= modules - 7;
-        const isFinderBL = r >= modules - 7 && c < 7;
-
-        let fill = false;
-        if (isFinderTL || isFinderTR || isFinderBL) {
-          const rr = isFinderTL ? r : isFinderTR ? r : r - (modules - 7);
-          const cc = isFinderTL ? c : isFinderTR ? c - (modules - 7) : c;
-          fill = (rr === 0 || rr === 6) || (cc === 0 || cc === 6) || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
-        } else {
-          fill = rand() > 0.5;
-        }
-
-        if (fill) {
-          ctx.fillRect(c * cellSize, r * cellSize, cellSize - 0.5, cellSize - 0.5);
-        }
-      }
-    }
+    if (!text) return;
+    setReady(false);
+    let cancelled = false;
+    loadQRLib().then((QRCode) => {
+      if (cancelled || !QRCode || !canvasRef.current) return;
+      const canvas = canvasRef.current;
+      canvas.width  = size * 2;
+      canvas.height = size * 2;
+      canvas.style.width  = `${size}px`;
+      canvas.style.height = `${size}px`;
+      QRCode.toCanvas(canvas, text, {
+        width: size * 2,
+        margin: 2,
+        color: {
+          dark:  isDark ? "#22d3ee" : "#0e7490",
+          light: isDark ? "#0f172a" : "#ffffff",
+        },
+        errorCorrectionLevel: "M",
+      }).then(() => { if (!cancelled) setReady(true); });
+    });
+    return () => { cancelled = true; };
   }, [text, size, isDark]);
 
-  return <canvas ref={canvasRef} style={{ width: size, height: size, borderRadius: 8 }} />;
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <div
+        className="absolute inset-0 rounded-2xl pointer-events-none"
+        style={{
+          background: isDark
+            ? "radial-gradient(ellipse at center, rgba(34,211,238,0.15) 0%, transparent 70%)"
+            : "radial-gradient(ellipse at center, rgba(14,116,144,0.08) 0%, transparent 70%)",
+          zIndex: 0,
+        }}
+      />
+      <canvas
+        ref={canvasRef}
+        id="qr-canvas-el"
+        style={{
+          width: size, height: size,
+          borderRadius: 14,
+          position: "relative", zIndex: 1,
+          boxShadow: isDark
+            ? "0 0 0 2px rgba(34,211,238,0.3), 0 8px 32px rgba(34,211,238,0.15)"
+            : "0 0 0 2px rgba(14,116,144,0.2), 0 8px 32px rgba(0,0,0,0.08)",
+          display: "block",
+        }}
+      />
+      {!ready && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl gap-2"
+          style={{ background: isDark ? "#0f172a" : "#f8fafc", zIndex: 2 }}
+        >
+          <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+          <p className={`text-[10px] font-medium ${isDark ? "text-gray-500" : "text-gray-400"}`}>Generating QR…</p>
+        </div>
+      )}
+    </div>
+  );
 };
 
 /* ─── Time-Limited Link Modal ─── */
@@ -393,10 +414,11 @@ const TimeLimitedLinkModal = ({ vaultId, isDark, onClose }) => {
 
 /* ─── QR Code Modal ─── */
 const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
-  const [link, setLink] = useState("");
-  const [generating, setGenerating] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [link,       setLink]       = useState("");
+  const [fetching,   setFetching]   = useState(true);
+  const [copied,     setCopied]     = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const qrCanvasRef = useRef(null);
 
   useEffect(() => {
     const fetchLink = async () => {
@@ -411,7 +433,7 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
       } catch {
         setLink(`${window.location.origin}/vault/join/${vaultId}`);
       } finally {
-        setGenerating(false);
+        setFetching(false);
       }
     };
     fetchLink();
@@ -424,11 +446,12 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
   };
 
   const downloadQR = () => {
-    const canvas = document.querySelector("#qr-canvas-el");
+    // qrCanvasRef points directly to the <canvas id="qr-canvas-el">
+    const canvas = qrCanvasRef.current;
     if (!canvas) return;
     const a = document.createElement("a");
-    a.href = canvas.toDataURL("image/png");
-    a.download = `airvault-${vaultName}-qr.png`;
+    a.href     = canvas.toDataURL("image/png");
+    a.download = `airvault-${(vaultName || "vault").replace(/\s+/g, "-")}-qr.png`;
     a.click();
     setDownloaded(true);
     setTimeout(() => setDownloaded(false), 2000);
@@ -440,9 +463,10 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
       onClick={onClose}>
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
         onClick={e => e.stopPropagation()}
-        className={`rounded-2xl w-full max-w-sm shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900 border-cyan-500/20" : "bg-white border-cyan-500/30"}`}>
-        <div className="h-[3px] bg-gradient-to-r from-violet-500 via-purple-600 to-indigo-600" />
+        className={`rounded-2xl w-full max-w-sm shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900 border-violet-500/20" : "bg-white border-violet-500/30"}`}>
+        <div className="h-[3px] bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-600" />
         <div className="p-6">
+          {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/30">
@@ -450,7 +474,7 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
               </div>
               <div>
                 <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>QR Code</h2>
-                <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>Scan to access vault</p>
+                <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>Scan to join this vault</p>
               </div>
             </div>
             <button onClick={onClose} className={`p-2 rounded-xl ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
@@ -458,22 +482,35 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
             </button>
           </div>
 
-          <div className={`flex flex-col items-center gap-4 p-5 rounded-2xl border mb-4 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
-            {generating ? (
-              <div className="w-40 h-40 flex items-center justify-center">
+          {/* QR display area */}
+          <div className={`flex flex-col items-center gap-4 p-6 rounded-2xl border mb-4 relative overflow-hidden ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
+            {/* Corner accents */}
+            {["top-0 left-0", "top-0 right-0", "bottom-0 left-0", "bottom-0 right-0"].map((pos, i) => (
+              <div key={i} className={`absolute ${pos} w-5 h-5`}>
+                <div className={`w-full h-full ${
+                  pos.includes("right") && pos.includes("bottom") ? "border-b-2 border-r-2 rounded-br-lg" :
+                  pos.includes("right") ? "border-t-2 border-r-2 rounded-tr-lg" :
+                  pos.includes("bottom") ? "border-b-2 border-l-2 rounded-bl-lg" :
+                  "border-t-2 border-l-2 rounded-tl-lg"
+                } border-violet-500/50`} />
+              </div>
+            ))}
+
+            {fetching ? (
+              <div className="w-[200px] h-[200px] flex items-center justify-center">
                 <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
               </div>
             ) : (
-              <div id="qr-canvas-wrapper">
-                <SimpleQRCode text={link} size={160} isDark={isDark} />
-              </div>
+              <RealQRCode text={link} size={200} isDark={isDark} canvasRef={qrCanvasRef} />
             )}
+
             <div className="text-center">
-              <p className={`text-xs font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>{vaultName}</p>
-              <p className={`text-[10px] mt-0.5 ${isDark ? "text-gray-400" : "text-gray-500"}`}>Scan with any QR reader to access</p>
+              <p className={`text-xs font-bold ${isDark ? "text-white" : "text-gray-900"}`}>{vaultName}</p>
+              <p className={`text-[10px] mt-0.5 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Point camera or QR scanner to join</p>
             </div>
           </div>
 
+          {/* Link row */}
           <div className={`flex items-center gap-2 p-2.5 rounded-xl border mb-4 ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
             <p className={`text-[10px] font-mono flex-1 truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{link || "Generating..."}</p>
             <button onClick={copyLink} className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
@@ -481,14 +518,15 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
             </button>
           </div>
 
+          {/* Buttons */}
           <div className="flex gap-2">
             <button onClick={copyLink}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-semibold text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
               <Copy className="w-3.5 h-3.5" />
               {copied ? "Copied!" : "Copy Link"}
             </button>
-            <button onClick={downloadQR} disabled={generating}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50">
+            <button onClick={downloadQR} disabled={fetching}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-violet-500/25 hover:scale-[1.02] hover:shadow-violet-500/40 transition-all disabled:opacity-50">
               <Download className="w-3.5 h-3.5" />
               {downloaded ? "Saved!" : "Save QR"}
             </button>
@@ -536,7 +574,7 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
               <li>• Share the Vault ID or link below with anyone</li>
               <li>• If they're not registered, they'll be prompted to sign up first</li>
               <li>• After signup/login, the shared vault appears in their vault selector</li>
-              <li>• They'll have viewer access by default (you can change this in Members)</li>
+              <li>• They'll have viewer access by default (you can change this in Permissions)</li>
             </ul>
           </div>
 
@@ -1251,7 +1289,7 @@ const VaultDashboard = () => {
                         desc: "Control member access & roles",
                         gradient: "from-emerald-500 to-teal-600",
                         label: "Manage",
-                        onClick: () => navigate(`/vault/${activeVault.id}/members`),
+                        onClick: () => navigate(`/vault/permissions`),
                       },
                     ].map(({ Icon, title, desc, gradient, label, onClick }, i) => (
                       <motion.div key={i} whileHover={{ y: -3 }}
