@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import QRCodeLib from "qrcode";
 import {
   Lock, Eye, Share2, QrCode, Trash2, Search, Grid3X3, List,
   AlertTriangle, CheckCircle, Clock, AlertCircle, Activity, Plus,
@@ -219,77 +220,104 @@ const formatBytes = (bytes) => {
   return `${(bytes / Math.pow(k, i)).toFixed(i ? 1 : 0)} ${s[i]}`;
 };
 
-/* ─── Real QR Code via qrcode npm CDN ─── */
-const loadQRLib = () =>
-  new Promise((resolve) => {
-    if (window.__qrcodeLib) { resolve(window.__qrcodeLib); return; }
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js";
-    s.onload = () => { window.__qrcodeLib = window.QRCode; resolve(window.__qrcodeLib); };
-    s.onerror = () => resolve(null);
-    document.head.appendChild(s);
-  });
-
+/* ─── RealQRCode — uses npm "qrcode" package, NO CDN ─── */
 const RealQRCode = ({ text, size = 200, isDark, canvasRef: externalRef }) => {
   const internalRef = useRef(null);
   const canvasRef   = externalRef || internalRef;
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!text) return;
     setReady(false);
+    setError(false);
     let cancelled = false;
-    loadQRLib().then((QRCode) => {
-      if (cancelled || !QRCode || !canvasRef.current) return;
+
+    const render = async () => {
+      // Wait one tick for the canvas to be mounted
+      await new Promise(r => setTimeout(r, 50));
+      if (cancelled || !canvasRef.current) return;
+
       const canvas = canvasRef.current;
       canvas.width  = size * 2;
       canvas.height = size * 2;
       canvas.style.width  = `${size}px`;
       canvas.style.height = `${size}px`;
-      QRCode.toCanvas(canvas, text, {
-        width: size * 2,
-        margin: 2,
-        color: {
-          dark:  isDark ? "#22d3ee" : "#0e7490",
-          light: isDark ? "#0f172a" : "#ffffff",
-        },
-        errorCorrectionLevel: "M",
-      }).then(() => { if (!cancelled) setReady(true); });
-    });
+
+      try {
+        await QRCodeLib.toCanvas(canvas, text, {
+          width: size * 2,
+          margin: 2,
+          color: {
+            // Cyan dots on dark background (dark mode) OR teal dots on white (light mode)
+            dark:  isDark ? "#22d3ee" : "#0e7490",
+            light: isDark ? "#0f172a" : "#ffffff",
+          },
+          errorCorrectionLevel: "M",
+        });
+        if (!cancelled) setReady(true);
+      } catch (err) {
+        console.error("QR render error:", err);
+        if (!cancelled) setError(true);
+      }
+    };
+
+    render();
     return () => { cancelled = true; };
   }, [text, size, isDark]);
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
+      {/* Glow halo behind the QR */}
       <div
         className="absolute inset-0 rounded-2xl pointer-events-none"
         style={{
           background: isDark
-            ? "radial-gradient(ellipse at center, rgba(34,211,238,0.15) 0%, transparent 70%)"
-            : "radial-gradient(ellipse at center, rgba(14,116,144,0.08) 0%, transparent 70%)",
+            ? "radial-gradient(ellipse at center, rgba(34,211,238,0.18) 0%, transparent 70%)"
+            : "radial-gradient(ellipse at center, rgba(14,116,144,0.10) 0%, transparent 70%)",
           zIndex: 0,
         }}
       />
+
       <canvas
         ref={canvasRef}
         id="qr-canvas-el"
         style={{
-          width: size, height: size,
+          width: size,
+          height: size,
           borderRadius: 14,
-          position: "relative", zIndex: 1,
-          boxShadow: isDark
-            ? "0 0 0 2px rgba(34,211,238,0.3), 0 8px 32px rgba(34,211,238,0.15)"
-            : "0 0 0 2px rgba(14,116,144,0.2), 0 8px 32px rgba(0,0,0,0.08)",
+          position: "relative",
+          zIndex: 1,
           display: "block",
+          boxShadow: isDark
+            ? "0 0 0 2px rgba(34,211,238,0.35), 0 8px 32px rgba(34,211,238,0.18)"
+            : "0 0 0 2px rgba(14,116,144,0.25), 0 8px 32px rgba(0,0,0,0.10)",
         }}
       />
-      {!ready && (
+
+      {/* Spinner overlay while generating */}
+      {!ready && !error && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl gap-2"
           style={{ background: isDark ? "#0f172a" : "#f8fafc", zIndex: 2 }}
         >
-          <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
-          <p className={`text-[10px] font-medium ${isDark ? "text-gray-500" : "text-gray-400"}`}>Generating QR…</p>
+          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+          <p className={`text-[10px] font-medium ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+            Generating QR…
+          </p>
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl gap-2"
+          style={{ background: isDark ? "#0f172a" : "#f8fafc", zIndex: 2 }}
+        >
+          <AlertCircle className="w-8 h-8 text-red-400" />
+          <p className={`text-[10px] font-medium ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+            QR failed — check console
+          </p>
         </div>
       )}
     </div>
@@ -446,7 +474,6 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
   };
 
   const downloadQR = () => {
-    // qrCanvasRef points directly to the <canvas id="qr-canvas-el">
     const canvas = qrCanvasRef.current;
     if (!canvas) return;
     const a = document.createElement("a");
@@ -567,7 +594,6 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
             </button>
           </div>
 
-          {/* How it works */}
           <div className={`p-4 rounded-xl border mb-4 ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"}`}>
             <p className={`text-xs font-semibold mb-2 ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>How it works</p>
             <ul className={`text-xs space-y-1 ${isDark ? "text-indigo-300/80" : "text-indigo-600"}`}>
@@ -578,7 +604,6 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
             </ul>
           </div>
 
-          {/* Vault ID */}
           <div className="mb-4">
             <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Vault ID</label>
             <div className="flex gap-2">
@@ -592,7 +617,6 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
             </div>
           </div>
 
-          {/* Full link */}
           <div className="mb-6">
             <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Direct Join Link</label>
             <div className="flex gap-2">
@@ -632,7 +656,6 @@ const VaultDashboard = () => {
   const [mousePosition,  setMousePosition]  = useState({ x: 0, y: 0 });
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
-  // Backend data
   const [files,         setFiles]         = useState([]);
   const [alerts,        setAlerts]        = useState([]);
   const [stats,         setStats]         = useState(null);
@@ -640,7 +663,6 @@ const VaultDashboard = () => {
   const [loadingStats,  setLoadingStats]  = useState(true);
   const [deletingId,    setDeletingId]    = useState(null);
 
-  // Sharing modals
   const [showTimedModal,   setShowTimedModal]   = useState(false);
   const [showQRModal,      setShowQRModal]       = useState(false);
   const [showVaultIDModal, setShowVaultIDModal]  = useState(false);
@@ -661,7 +683,6 @@ const VaultDashboard = () => {
     return () => window.removeEventListener("sidebarToggle", h);
   }, []);
 
-  // ── Fetch files from backend ──────────────────────────────────
   const fetchFiles = useCallback(async () => {
     if (!activeVault?.id) return;
     setLoadingFiles(true);
@@ -684,7 +705,6 @@ const VaultDashboard = () => {
     }
   }, [activeVault?.id]);
 
-  // ── Fetch dashboard stats ──────────────────────────────────────
   const fetchStats = useCallback(async () => {
     if (!activeVault?.id) return;
     setLoadingStats(true);
@@ -705,7 +725,6 @@ const VaultDashboard = () => {
     }
   }, [activeVault?.id]);
 
-  // ── Fetch access log for alerts ────────────────────────────────
   const fetchAlerts = useCallback(async () => {
     if (!activeVault?.id) return;
     try {
@@ -753,7 +772,6 @@ const VaultDashboard = () => {
     return `${Math.floor(hrs / 24)} days ago`;
   };
 
-  // ── Delete file ───────────────────────────────────────────────
   const handleDeleteFile = async (fileId) => {
     if (!activeVault?.id) return;
     setDeletingId(fileId);
@@ -768,7 +786,6 @@ const VaultDashboard = () => {
     }
   };
 
-  // ── Computed values ───────────────────────────────────────────
   const filteredFiles = files.filter(f => f.name?.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const vaultStats = stats?.vaults?.find(v => v.id === activeVault?.id);
@@ -783,7 +800,6 @@ const VaultDashboard = () => {
     files.reduce((acc, f) => { acc[f.type] = (acc[f.type] || 0) + (f.rawSize || 0); return acc; }, {})
   ).sort((a, b) => b[1] - a[1]);
 
-  // Weekly uploads from recent activity
   const weeklyUploads = (() => {
     if (!stats?.recentActivity) return [2, 5, 3, 8, 4, 7, 5];
     const days = new Array(7).fill(0);
@@ -836,14 +852,12 @@ const VaultDashboard = () => {
   return (
     <div className={`h-screen w-full overflow-hidden transition-colors duration-500 ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"}`}>
 
-      {/* Ambient blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className={`absolute top-1/4 -left-1/4 w-96 h-96 ${isDark ? "bg-cyan-500/5" : "bg-cyan-500/3"} rounded-full blur-3xl animate-pulse`} />
         <div className={`absolute bottom-1/4 -right-1/4 w-96 h-96 ${isDark ? "bg-blue-600/5" : "bg-blue-600/3"} rounded-full blur-3xl animate-pulse`} style={{ animationDelay: "1s" }} />
         <div className={`absolute top-1/2 left-1/2 w-96 h-96 ${isDark ? "bg-indigo-500/3" : "bg-indigo-500/2"} rounded-full blur-3xl animate-pulse`} style={{ animationDelay: "0.5s" }} />
       </div>
 
-      {/* Cursor glow */}
       <div className="hidden lg:block fixed w-80 h-80 rounded-full pointer-events-none z-0 mix-blend-screen"
         style={{
           background: isDark ? "radial-gradient(circle, rgba(56,189,248,0.07) 0%, transparent 70%)" : "radial-gradient(circle, rgba(56,189,248,0.05) 0%, transparent 70%)",
@@ -853,7 +867,6 @@ const VaultDashboard = () => {
       <VaultTopBar />
       <HamburgerMenu />
 
-      {/* ══ MAIN ══ */}
       <motion.main
         initial={false}
         animate={{ marginLeft: sidebarW }}
@@ -863,7 +876,6 @@ const VaultDashboard = () => {
         <div className="flex-1 overflow-y-auto vault-scrollbar">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6">
 
-            {/* Page heading */}
             <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3 sm:gap-4">
@@ -917,10 +929,7 @@ const VaultDashboard = () => {
             {/* ROW A */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 items-start">
 
-              {/* Storage column */}
               <div className="flex flex-col gap-4 sm:gap-5">
-
-                {/* Storage Usage */}
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
                   className={`${card} p-5 flex flex-col`} style={{ height: "340px" }}>
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -969,7 +978,6 @@ const VaultDashboard = () => {
                   </div>
                 </motion.div>
 
-                {/* Weekly Uploads */}
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
                   className={`${card} p-5 flex-shrink-0`}>
                   <div className="flex items-center gap-2.5 mb-4">
@@ -985,7 +993,6 @@ const VaultDashboard = () => {
                 </motion.div>
               </div>
 
-              {/* File Breakdown Donut */}
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}
                 className={`${card} p-5`}>
                 <div className="flex items-center justify-between mb-5">
@@ -1032,7 +1039,6 @@ const VaultDashboard = () => {
                 </div>
               </motion.div>
 
-              {/* Activity Feed */}
               <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
                 className={`${card} p-5 md:col-span-2 xl:col-span-1`}>
                 <div className="flex items-center justify-between mb-5">
@@ -1077,7 +1083,6 @@ const VaultDashboard = () => {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5">
               <div className="xl:col-span-8 space-y-4 sm:space-y-5">
 
-                {/* Search + view toggle */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
                   className="flex gap-2 sm:gap-3">
                   <div className="flex-1 relative">
@@ -1099,7 +1104,6 @@ const VaultDashboard = () => {
                   ))}
                 </motion.div>
 
-                {/* File panel */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.38 }}
                   className={`${card} p-4 sm:p-6`}>
                   <div className="flex items-center justify-between mb-5">
@@ -1114,7 +1118,6 @@ const VaultDashboard = () => {
                     </div>
                   </div>
 
-                  {/* Grid view */}
                   {viewMode === "grid" && (
                     <div className="max-h-[520px] overflow-y-auto pr-1 vault-scrollbar">
                       {loadingFiles ? (
@@ -1160,7 +1163,6 @@ const VaultDashboard = () => {
                                       </motion.div>
                                     )}
                                   </AnimatePresence>
-                                  {/* Only Open and Delete buttons */}
                                   <div className="flex gap-1.5">
                                     <button
                                       onClick={() => navigate(`/vault/${activeVault.id}/files`)}
@@ -1191,7 +1193,6 @@ const VaultDashboard = () => {
                     </div>
                   )}
 
-                  {/* List view */}
                   {viewMode === "list" && (
                     <div className="max-h-[520px] overflow-y-auto pr-1 vault-scrollbar space-y-2">
                       {loadingFiles ? (
@@ -1228,7 +1229,6 @@ const VaultDashboard = () => {
                                   <Lock className="w-2.5 h-2.5" /> Encrypted
                                 </span>
                               )}
-                              {/* Only Open and Delete */}
                               <button onClick={() => navigate(`/vault/${activeVault.id}/files`)}
                                 className={`p-1.5 sm:p-2 rounded-lg transition-all ${isDark ? "hover:bg-cyan-500/20 text-cyan-400" : "hover:bg-cyan-100 text-cyan-600"}`}>
                                 <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1251,7 +1251,6 @@ const VaultDashboard = () => {
                   )}
                 </motion.div>
 
-                {/* Smart Sharing */}
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.44 }}
                   className={`${card} p-4 sm:p-6`}>
                   <h2 className={`text-sm sm:text-base font-bold mb-5 flex items-center gap-2.5 ${isDark ? "text-white" : "text-gray-900"}`}>
@@ -1259,38 +1258,10 @@ const VaultDashboard = () => {
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
-                      {
-                        Icon: Clock,
-                        title: "Time-Limited Links",
-                        desc: "Links that expire automatically",
-                        gradient: "from-cyan-500 to-blue-600",
-                        label: "Generate Link",
-                        onClick: () => setShowTimedModal(true),
-                      },
-                      {
-                        Icon: QrCode,
-                        title: "QR Codes",
-                        desc: "Share via scannable QR",
-                        gradient: "from-violet-500 to-purple-600",
-                        label: "Create QR",
-                        onClick: () => setShowQRModal(true),
-                      },
-                      {
-                        Icon: Share2,
-                        title: "Share Vault ID",
-                        desc: "Share vault ID for direct access",
-                        gradient: "from-indigo-500 to-blue-600",
-                        label: "Share ID",
-                        onClick: () => setShowVaultIDModal(true),
-                      },
-                      {
-                        Icon: Users,
-                        title: "Permissions",
-                        desc: "Control member access & roles",
-                        gradient: "from-emerald-500 to-teal-600",
-                        label: "Manage",
-                        onClick: () => navigate(`/vault/permissions`),
-                      },
+                      { Icon: Clock,  title: "Time-Limited Links", desc: "Links that expire automatically",      gradient: "from-cyan-500 to-blue-600",    label: "Generate Link", onClick: () => setShowTimedModal(true) },
+                      { Icon: QrCode, title: "QR Codes",           desc: "Share via scannable QR",              gradient: "from-violet-500 to-purple-600", label: "Create QR",     onClick: () => setShowQRModal(true) },
+                      { Icon: Share2, title: "Share Vault ID",     desc: "Share vault ID for direct access",    gradient: "from-indigo-500 to-blue-600",   label: "Share ID",      onClick: () => setShowVaultIDModal(true) },
+                      { Icon: Users,  title: "Permissions",        desc: "Control member access & roles",       gradient: "from-emerald-500 to-teal-600",  label: "Manage",        onClick: () => navigate(`/vault/permissions`) },
                     ].map(({ Icon, title, desc, gradient, label, onClick }, i) => (
                       <motion.div key={i} whileHover={{ y: -3 }}
                         className={`group relative rounded-xl p-4 border transition-all duration-500 overflow-hidden cursor-pointer ${isDark ? "bg-slate-900/50 border-slate-700/50 hover:border-cyan-500/30 hover:shadow-lg hover:shadow-cyan-500/10" : "bg-gray-50 border-gray-200 hover:border-cyan-500/40 hover:shadow-lg"}`}
@@ -1312,7 +1283,6 @@ const VaultDashboard = () => {
                 </motion.div>
               </div>
 
-              {/* Security Monitor */}
               <div className="xl:col-span-4">
                 <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.36 }}
                   className={`${card} overflow-hidden xl:sticky xl:top-24`}>
@@ -1388,30 +1358,15 @@ const VaultDashboard = () => {
         </div>
       </motion.main>
 
-      {/* ── Sharing Modals ── */}
       <AnimatePresence>
         {showTimedModal && (
-          <TimeLimitedLinkModal
-            vaultId={activeVault?.id}
-            isDark={isDark}
-            onClose={() => setShowTimedModal(false)}
-          />
+          <TimeLimitedLinkModal vaultId={activeVault?.id} isDark={isDark} onClose={() => setShowTimedModal(false)} />
         )}
         {showQRModal && (
-          <QRCodeModal
-            vaultId={activeVault?.id}
-            vaultName={activeVault?.name}
-            isDark={isDark}
-            onClose={() => setShowQRModal(false)}
-          />
+          <QRCodeModal vaultId={activeVault?.id} vaultName={activeVault?.name} isDark={isDark} onClose={() => setShowQRModal(false)} />
         )}
         {showVaultIDModal && (
-          <VaultIDShareModal
-            vaultId={activeVault?.id}
-            vaultName={activeVault?.name}
-            isDark={isDark}
-            onClose={() => setShowVaultIDModal(false)}
-          />
+          <VaultIDShareModal vaultId={activeVault?.id} vaultName={activeVault?.name} isDark={isDark} onClose={() => setShowVaultIDModal(false)} />
         )}
       </AnimatePresence>
 
