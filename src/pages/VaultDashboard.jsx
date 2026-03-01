@@ -220,7 +220,7 @@ const formatBytes = (bytes) => {
   return `${(bytes / Math.pow(k, i)).toFixed(i ? 1 : 0)} ${s[i]}`;
 };
 
-/* ─── RealQRCode — uses npm "qrcode" package, NO CDN ─── */
+/* ─── RealQRCode ─── */
 const RealQRCode = ({ text, size = 200, isDark, canvasRef: externalRef }) => {
   const internalRef = useRef(null);
   const canvasRef   = externalRef || internalRef;
@@ -234,22 +234,21 @@ const RealQRCode = ({ text, size = 200, isDark, canvasRef: externalRef }) => {
     let cancelled = false;
 
     const render = async () => {
-      // Wait one tick for the canvas to be mounted
       await new Promise(r => setTimeout(r, 50));
       if (cancelled || !canvasRef.current) return;
 
       const canvas = canvasRef.current;
-      canvas.width  = size * 2;
-      canvas.height = size * 2;
+      // Set actual pixel dimensions — no scaling trick, 1:1 so nothing overflows
+      canvas.width  = size;
+      canvas.height = size;
       canvas.style.width  = `${size}px`;
       canvas.style.height = `${size}px`;
 
       try {
         await QRCodeLib.toCanvas(canvas, text, {
-          width: size * 2,
-          margin: 2,
+          width: size,
+          margin: 1,           // minimal margin so QR fills the canvas fully
           color: {
-            // Cyan dots on dark background (dark mode) OR teal dots on white (light mode)
             dark:  isDark ? "#22d3ee" : "#0e7490",
             light: isDark ? "#0f172a" : "#ffffff",
           },
@@ -268,7 +267,7 @@ const RealQRCode = ({ text, size = 200, isDark, canvasRef: externalRef }) => {
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
-      {/* Glow halo behind the QR */}
+      {/* Glow halo */}
       <div
         className="absolute inset-0 rounded-2xl pointer-events-none"
         style={{
@@ -289,13 +288,14 @@ const RealQRCode = ({ text, size = 200, isDark, canvasRef: externalRef }) => {
           position: "relative",
           zIndex: 1,
           display: "block",
+          background: isDark ? "#0f172a" : "#ffffff",
           boxShadow: isDark
             ? "0 0 0 2px rgba(34,211,238,0.35), 0 8px 32px rgba(34,211,238,0.18)"
             : "0 0 0 2px rgba(14,116,144,0.25), 0 8px 32px rgba(0,0,0,0.10)",
         }}
       />
 
-      {/* Spinner overlay while generating */}
+      {/* Spinner overlay */}
       {!ready && !error && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl gap-2"
@@ -382,14 +382,11 @@ const TimeLimitedLinkModal = ({ vaultId, isDark, onClose }) => {
               <X className="w-4 h-4" />
             </button>
           </div>
-
           <div className="space-y-4">
             <div>
               <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Link Expires In</label>
-              <CustomSelect value={expiry} onChange={setExpiry}
-                options={["1 hour", "24 hours", "7 days", "30 days"]} isDark={isDark} />
+              <CustomSelect value={expiry} onChange={setExpiry} options={["1 hour", "24 hours", "7 days", "30 days"]} isDark={isDark} />
             </div>
-
             <div>
               <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Permissions</label>
               <div className="space-y-2">
@@ -409,7 +406,6 @@ const TimeLimitedLinkModal = ({ vaultId, isDark, onClose }) => {
                 ))}
               </div>
             </div>
-
             <div>
               <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Shareable Link</label>
               <div className="flex gap-2">
@@ -423,7 +419,6 @@ const TimeLimitedLinkModal = ({ vaultId, isDark, onClose }) => {
               </div>
             </div>
           </div>
-
           <div className="flex gap-3 mt-6">
             <button onClick={onClose} className={`flex-1 py-2.5 rounded-xl border font-medium text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
               Close
@@ -490,8 +485,9 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
       onClick={onClose}>
       <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
         onClick={e => e.stopPropagation()}
-        className={`rounded-2xl w-full max-w-sm shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900 border-violet-500/20" : "bg-white border-violet-500/30"}`}>
-        <div className="h-[3px] bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-600" />
+        className={`rounded-2xl w-full max-w-sm shadow-2xl border ${isDark ? "bg-slate-900 border-violet-500/20" : "bg-white border-violet-500/30"}`}>
+        {/* ↑ removed overflow-hidden so QR canvas is never clipped */}
+        <div className="h-[3px] bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-600 rounded-t-2xl" />
         <div className="p-6">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
@@ -509,11 +505,11 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
             </button>
           </div>
 
-          {/* QR display area */}
-          <div className={`flex flex-col items-center gap-4 p-6 rounded-2xl border mb-4 relative overflow-hidden ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
+          {/* QR display area — NO overflow-hidden, corner accents use pointer-events-none */}
+          <div className={`flex flex-col items-center gap-4 p-5 rounded-2xl border mb-4 relative ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
             {/* Corner accents */}
             {["top-0 left-0", "top-0 right-0", "bottom-0 left-0", "bottom-0 right-0"].map((pos, i) => (
-              <div key={i} className={`absolute ${pos} w-5 h-5`}>
+              <div key={i} className={`absolute ${pos} w-5 h-5 pointer-events-none`}>
                 <div className={`w-full h-full ${
                   pos.includes("right") && pos.includes("bottom") ? "border-b-2 border-r-2 rounded-br-lg" :
                   pos.includes("right") ? "border-t-2 border-r-2 rounded-tr-lg" :
@@ -524,11 +520,11 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
             ))}
 
             {fetching ? (
-              <div className="w-[200px] h-[200px] flex items-center justify-center">
+              <div className="w-[220px] h-[220px] flex items-center justify-center">
                 <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
               </div>
             ) : (
-              <RealQRCode text={link} size={200} isDark={isDark} canvasRef={qrCanvasRef} />
+              <RealQRCode text={link} size={220} isDark={isDark} canvasRef={qrCanvasRef} />
             )}
 
             <div className="text-center">
@@ -593,7 +589,6 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
               <X className="w-4 h-4" />
             </button>
           </div>
-
           <div className={`p-4 rounded-xl border mb-4 ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"}`}>
             <p className={`text-xs font-semibold mb-2 ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>How it works</p>
             <ul className={`text-xs space-y-1 ${isDark ? "text-indigo-300/80" : "text-indigo-600"}`}>
@@ -603,7 +598,6 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
               <li>• They'll have viewer access by default (you can change this in Permissions)</li>
             </ul>
           </div>
-
           <div className="mb-4">
             <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Vault ID</label>
             <div className="flex gap-2">
@@ -616,7 +610,6 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
               </button>
             </div>
           </div>
-
           <div className="mb-6">
             <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Direct Join Link</label>
             <div className="flex gap-2">
@@ -629,12 +622,10 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
               </button>
             </div>
           </div>
-
           <div className={`flex items-center gap-3 p-3 rounded-xl border text-xs mb-4 ${isDark ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
             <Shield className="w-4 h-4 flex-shrink-0" />
             <span>The vault is password-protected. Recipients will need the vault password to access encrypted files.</span>
           </div>
-
           <button onClick={onClose} className={`w-full py-2.5 rounded-xl border font-medium text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
             Done
           </button>
@@ -650,22 +641,22 @@ const VaultDashboard = () => {
   const { isDark }      = useTheme();
   const navigate        = useNavigate();
 
-  const [viewMode,       setViewMode]       = useState("grid");
-  const [searchQuery,    setSearchQuery]    = useState("");
-  const [hoveredFileId,  setHoveredFileId]  = useState(null);
-  const [mousePosition,  setMousePosition]  = useState({ x: 0, y: 0 });
+  const [viewMode,        setViewMode]        = useState("grid");
+  const [searchQuery,     setSearchQuery]     = useState("");
+  const [hoveredFileId,   setHoveredFileId]   = useState(null);
+  const [mousePosition,   setMousePosition]   = useState({ x: 0, y: 0 });
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
-  const [files,         setFiles]         = useState([]);
-  const [alerts,        setAlerts]        = useState([]);
-  const [stats,         setStats]         = useState(null);
-  const [loadingFiles,  setLoadingFiles]  = useState(true);
-  const [loadingStats,  setLoadingStats]  = useState(true);
-  const [deletingId,    setDeletingId]    = useState(null);
+  const [files,        setFiles]        = useState([]);
+  const [alerts,       setAlerts]       = useState([]);
+  const [stats,        setStats]        = useState(null);
+  const [loadingFiles, setLoadingFiles] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
+  const [deletingId,   setDeletingId]   = useState(null);
 
   const [showTimedModal,   setShowTimedModal]   = useState(false);
-  const [showQRModal,      setShowQRModal]       = useState(false);
-  const [showVaultIDModal, setShowVaultIDModal]  = useState(false);
+  const [showQRModal,      setShowQRModal]      = useState(false);
+  const [showVaultIDModal, setShowVaultIDModal] = useState(false);
 
   const SIDEBAR_COLLAPSED = 60;
   const SIDEBAR_EXPANDED  = 220;
@@ -714,10 +705,7 @@ const VaultDashboard = () => {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
-      }
+      if (res.ok) { const data = await res.json(); setStats(data); }
     } catch (err) {
       console.error("Failed to fetch stats:", err);
     } finally {
@@ -743,22 +731,16 @@ const VaultDashboard = () => {
         }));
         setAlerts(mappedAlerts.length > 0 ? mappedAlerts : getDefaultAlerts());
       }
-    } catch {
-      setAlerts(getDefaultAlerts());
-    }
+    } catch { setAlerts(getDefaultAlerts()); }
   }, [activeVault?.id]);
 
   useEffect(() => {
-    if (activeVault?.id) {
-      fetchFiles();
-      fetchStats();
-      fetchAlerts();
-    }
+    if (activeVault?.id) { fetchFiles(); fetchStats(); fetchAlerts(); }
   }, [activeVault?.id, fetchFiles, fetchStats, fetchAlerts]);
 
   const getDefaultAlerts = () => [
     { id: 1, type: "normal", message: "Vault accessed successfully", time: "Just now" },
-    { id: 2, type: "normal", message: "Vault backup completed", time: "1 hr ago" },
+    { id: 2, type: "normal", message: "Vault backup completed",      time: "1 hr ago" },
   ];
 
   const formatTimeAgo = (dateStr) => {
@@ -779,17 +761,14 @@ const VaultDashboard = () => {
       await vaultApi.deleteVaultFile(activeVault.id, fileId);
       setFiles(prev => prev.filter(f => f.id !== fileId));
       fetchStats();
-    } catch (err) {
-      console.error("Delete failed:", err);
-    } finally {
-      setDeletingId(null);
-    }
+    } catch (err) { console.error("Delete failed:", err); }
+    finally { setDeletingId(null); }
   };
 
   const filteredFiles = files.filter(f => f.name?.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const vaultStats = stats?.vaults?.find(v => v.id === activeVault?.id);
-  const totalSizeMB = vaultStats?.storageUsedMB || files.reduce((s, f) => s + (f.sv || 0), 0);
+  const vaultStats    = stats?.vaults?.find(v => v.id === activeVault?.id);
+  const totalSizeMB   = vaultStats?.storageUsedMB || files.reduce((s, f) => s + (f.sv || 0), 0);
   const STORAGE_LIMIT_MB = 500;
 
   const typeCounts = Object.entries(files.reduce((acc, f) => { acc[f.type] = (acc[f.type] || 0) + 1; return acc; }, {}));
@@ -812,11 +791,11 @@ const VaultDashboard = () => {
   })();
 
   const statCards = [
-    { label: "Total Files",  value: loadingStats ? "…" : (vaultStats?.fileCount ?? files.length),                              Icon: FileText, color: "from-cyan-500 to-blue-600",     bar: Math.min(((vaultStats?.fileCount ?? files.length) / 20) * 100, 100) },
-    { label: "Storage Used", value: loadingStats ? "…" : `${totalSizeMB.toFixed(1)} MB`,                                      Icon: Database, color: "from-blue-600 to-indigo-600",   bar: (totalSizeMB / STORAGE_LIMIT_MB) * 100 },
-    { label: "Shared Files", value: loadingStats ? "…" : (stats?.totals?.shared ?? files.filter(f => f.shared).length),        Icon: Share2,   color: "from-indigo-500 to-violet-600", bar: ((stats?.totals?.shared ?? files.filter(f => f.shared).length) / Math.max(files.length, 1)) * 100 },
-    { label: "Security",     value: "98%",                                                                                     Icon: Shield,   color: "from-emerald-500 to-teal-600",  bar: 98 },
-    { label: "Total Views",  value: loadingStats ? "…" : (stats?.totals?.views ?? files.reduce((s, f) => s + (f.views || 0), 0)), Icon: Eye,  color: "from-violet-500 to-purple-600", bar: 55 },
+    { label: "Total Files",  value: loadingStats ? "…" : (vaultStats?.fileCount ?? files.length),                                   Icon: FileText, color: "from-cyan-500 to-blue-600",     bar: Math.min(((vaultStats?.fileCount ?? files.length) / 20) * 100, 100) },
+    { label: "Storage Used", value: loadingStats ? "…" : `${totalSizeMB.toFixed(1)} MB`,                                           Icon: Database, color: "from-blue-600 to-indigo-600",   bar: (totalSizeMB / STORAGE_LIMIT_MB) * 100 },
+    { label: "Shared Files", value: loadingStats ? "…" : (stats?.totals?.shared ?? files.filter(f => f.shared).length),             Icon: Share2,   color: "from-indigo-500 to-violet-600", bar: ((stats?.totals?.shared ?? files.filter(f => f.shared).length) / Math.max(files.length, 1)) * 100 },
+    { label: "Security",     value: "98%",                                                                                          Icon: Shield,   color: "from-emerald-500 to-teal-600",  bar: 98 },
+    { label: "Total Views",  value: loadingStats ? "…" : (stats?.totals?.views ?? files.reduce((s, f) => s + (f.views || 0), 0)),   Icon: Eye,      color: "from-violet-500 to-purple-600", bar: 55 },
   ];
 
   const activityFeed = (stats?.recentActivity || []).slice(0, 7).map((a, i) => ({
@@ -928,7 +907,6 @@ const VaultDashboard = () => {
 
             {/* ROW A */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5 items-start">
-
               <div className="flex flex-col gap-4 sm:gap-5">
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
                   className={`${card} p-5 flex flex-col`} style={{ height: "340px" }}>
@@ -1082,7 +1060,6 @@ const VaultDashboard = () => {
             {/* ROW B */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5">
               <div className="xl:col-span-8 space-y-4 sm:space-y-5">
-
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
                   className="flex gap-2 sm:gap-3">
                   <div className="flex-1 relative">
@@ -1121,9 +1098,7 @@ const VaultDashboard = () => {
                   {viewMode === "grid" && (
                     <div className="max-h-[520px] overflow-y-auto pr-1 vault-scrollbar">
                       {loadingFiles ? (
-                        <div className="flex items-center justify-center py-16">
-                          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                        </div>
+                        <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 text-cyan-400 animate-spin" /></div>
                       ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                           {filteredFiles.length > 0 ? filteredFiles.map((file, idx) => {
@@ -1148,9 +1123,7 @@ const VaultDashboard = () => {
                                       </span>
                                     )}
                                   </div>
-                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide mb-1.5 border ${ft.bg} ${ft.border} ${ft.text}`}>
-                                    {file.type}
-                                  </span>
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide mb-1.5 border ${ft.bg} ${ft.border} ${ft.text}`}>{file.type}</span>
                                   <p className={`font-semibold text-sm mb-1 truncate ${isDark ? "text-white" : "text-gray-900"}`}>{file.name}</p>
                                   <p className={`text-xs mb-3 ${isDark ? "text-gray-400" : "text-gray-500"}`}>{file.size} · {file.uploadDate}</p>
                                   <AnimatePresence>
@@ -1164,14 +1137,11 @@ const VaultDashboard = () => {
                                     )}
                                   </AnimatePresence>
                                   <div className="flex gap-1.5">
-                                    <button
-                                      onClick={() => navigate(`/vault/${activeVault.id}/files`)}
+                                    <button onClick={() => navigate(`/vault/${activeVault.id}/files`)}
                                       className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${isDark ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"}`}>
                                       <FolderOpen className="w-3 h-3" /><span className="hidden sm:inline">Open</span>
                                     </button>
-                                    <button
-                                      onClick={() => handleDeleteFile(file.id)}
-                                      disabled={deletingId === file.id}
+                                    <button onClick={() => handleDeleteFile(file.id)} disabled={deletingId === file.id}
                                       className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border disabled:opacity-50 ${isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"}`}>
                                       {deletingId === file.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                       <span className="hidden sm:inline">Delete</span>
@@ -1196,9 +1166,7 @@ const VaultDashboard = () => {
                   {viewMode === "list" && (
                     <div className="max-h-[520px] overflow-y-auto pr-1 vault-scrollbar space-y-2">
                       {loadingFiles ? (
-                        <div className="flex items-center justify-center py-16">
-                          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
-                        </div>
+                        <div className="flex items-center justify-center py-16"><Loader2 className="w-8 h-8 text-cyan-400 animate-spin" /></div>
                       ) : filteredFiles.length > 0 ? filteredFiles.map((file, idx) => {
                         const ft = getFileTypeConfig(file.type);
                         const FIcon = ft.Icon;
@@ -1258,10 +1226,10 @@ const VaultDashboard = () => {
                   </h2>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
-                      { Icon: Clock,  title: "Time-Limited Links", desc: "Links that expire automatically",      gradient: "from-cyan-500 to-blue-600",    label: "Generate Link", onClick: () => setShowTimedModal(true) },
-                      { Icon: QrCode, title: "QR Codes",           desc: "Share via scannable QR",              gradient: "from-violet-500 to-purple-600", label: "Create QR",     onClick: () => setShowQRModal(true) },
-                      { Icon: Share2, title: "Share Vault ID",     desc: "Share vault ID for direct access",    gradient: "from-indigo-500 to-blue-600",   label: "Share ID",      onClick: () => setShowVaultIDModal(true) },
-                      { Icon: Users,  title: "Permissions",        desc: "Control member access & roles",       gradient: "from-emerald-500 to-teal-600",  label: "Manage",        onClick: () => navigate(`/vault/permissions`) },
+                      { Icon: Clock,  title: "Time-Limited Links", desc: "Links that expire automatically",   gradient: "from-cyan-500 to-blue-600",    label: "Generate Link", onClick: () => setShowTimedModal(true) },
+                      { Icon: QrCode, title: "QR Codes",           desc: "Share via scannable QR",           gradient: "from-violet-500 to-purple-600", label: "Create QR",     onClick: () => setShowQRModal(true) },
+                      { Icon: Share2, title: "Share Vault ID",     desc: "Share vault ID for direct access", gradient: "from-indigo-500 to-blue-600",   label: "Share ID",      onClick: () => setShowVaultIDModal(true) },
+                      { Icon: Users,  title: "Permissions",        desc: "Control member access & roles",    gradient: "from-emerald-500 to-teal-600",  label: "Manage",        onClick: () => navigate(`/vault/permissions`) },
                     ].map(({ Icon, title, desc, gradient, label, onClick }, i) => (
                       <motion.div key={i} whileHover={{ y: -3 }}
                         className={`group relative rounded-xl p-4 border transition-all duration-500 overflow-hidden cursor-pointer ${isDark ? "bg-slate-900/50 border-slate-700/50 hover:border-cyan-500/30 hover:shadow-lg hover:shadow-cyan-500/10" : "bg-gray-50 border-gray-200 hover:border-cyan-500/40 hover:shadow-lg"}`}
@@ -1359,15 +1327,9 @@ const VaultDashboard = () => {
       </motion.main>
 
       <AnimatePresence>
-        {showTimedModal && (
-          <TimeLimitedLinkModal vaultId={activeVault?.id} isDark={isDark} onClose={() => setShowTimedModal(false)} />
-        )}
-        {showQRModal && (
-          <QRCodeModal vaultId={activeVault?.id} vaultName={activeVault?.name} isDark={isDark} onClose={() => setShowQRModal(false)} />
-        )}
-        {showVaultIDModal && (
-          <VaultIDShareModal vaultId={activeVault?.id} vaultName={activeVault?.name} isDark={isDark} onClose={() => setShowVaultIDModal(false)} />
-        )}
+        {showTimedModal   && <TimeLimitedLinkModal vaultId={activeVault?.id} isDark={isDark} onClose={() => setShowTimedModal(false)} />}
+        {showQRModal      && <QRCodeModal vaultId={activeVault?.id} vaultName={activeVault?.name} isDark={isDark} onClose={() => setShowQRModal(false)} />}
+        {showVaultIDModal && <VaultIDShareModal vaultId={activeVault?.id} vaultName={activeVault?.name} isDark={isDark} onClose={() => setShowVaultIDModal(false)} />}
       </AnimatePresence>
 
       <style>{`
