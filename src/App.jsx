@@ -18,6 +18,8 @@ import UserProfile from "./pages/UserProfile";
 import Details from "./pages/Details";
 import FileView from "./pages/FileView";
 import FolderView from "./pages/FolderView";
+// ✅ NEW: Vault join page (for link/QR/vault ID sharing)
+import VaultJoinPage from "./pages/VaultJoinPage";
 
 // Enhanced Protected Route Component with Token Validation
 const ProtectedRoute = ({ children }) => {
@@ -34,7 +36,6 @@ const ProtectedRoute = ({ children }) => {
         return;
       }
 
-      // Optional: Validate token with backend
       try {
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
         const response = await fetch(`${API_URL}/auth/validate-token`, {
@@ -49,8 +50,6 @@ const ProtectedRoute = ({ children }) => {
         if (response.ok) {
           setIsAuthenticated(true);
         } else {
-          // Token is invalid or expired
-          console.log('Token validation failed, clearing auth data');
           localStorage.removeItem('token');
           sessionStorage.removeItem('token');
           localStorage.removeItem('user');
@@ -58,8 +57,7 @@ const ProtectedRoute = ({ children }) => {
         }
       } catch (error) {
         console.error('Token validation error:', error);
-        // On network error, assume token is valid to prevent blocking user
-        // The vaultApi will handle actual auth errors
+        // On network error, assume valid to avoid blocking user
         setIsAuthenticated(true);
       } finally {
         setIsValidating(false);
@@ -69,7 +67,6 @@ const ProtectedRoute = ({ children }) => {
     validateAuth();
   }, []);
 
-  // Show loading state while validating
   if (isValidating) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -81,7 +78,6 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // Redirect to home if not authenticated
   if (!isAuthenticated) {
     return <Navigate to="/" replace />;
   }
@@ -107,152 +103,87 @@ function App() {
           <Routes>
             <Route path="/" element={<AirVaultHomepage />} />
             <Route path="/airdrop" element={<AirDrop />} />
-            <Route 
-              path="/auth" 
-              element={<AuthPage />} 
-            />
+            <Route path="/auth" element={<AuthPage />} />
+
+            {/* ✅ Public vault join route — no auth required, handles it internally */}
+            <Route path="/vault/join/:vaultId" element={<VaultJoinPage />} />
 
             <Route 
               path="/maindashboard" 
-              element={
-                <ProtectedRoute>
-                  <MainDashboard />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} 
             />
 
             <Route 
               path="/createvaults" 
-              element={
-                <ProtectedRoute>
-                  <CreateVault />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><CreateVault /></ProtectedRoute>} 
             />
             
             <Route 
               path="/vaults" 
-              element={
-                <ProtectedRoute>
-                  <VaultSelector />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><VaultSelector /></ProtectedRoute>} 
             />
             
             <Route 
               path="/vault/dashboard" 
-              element={
-                <ProtectedRoute>
-                  <VaultDashboard />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><VaultDashboard /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/accesslog" 
-              element={
-                <ProtectedRoute>
-                  <AccessLog />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><AccessLog /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/fileupload" 
-              element={
-                <ProtectedRoute>
-                  <FileUpload />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><FileUpload /></ProtectedRoute>} 
             />
-
-            
 
             <Route 
               path="/vault/permissions" 
-              element={
-                <ProtectedRoute>
-                  <Permissions />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><Permissions /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/filesharing" 
-              element={
-                <ProtectedRoute>
-                  <FileSharing />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><FileSharing /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/userprofile" 
-              element={
-                <ProtectedRoute>
-                  <UserProfile />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><UserProfile /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/details" 
-              element={
-                <ProtectedRoute>
-                  <Details />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><Details /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/file/:fileId" 
-              element={
-                <ProtectedRoute>
-                  <FileView />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><FileView /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/folder/:folderId" 
-              element={
-                <ProtectedRoute>
-                  <FolderView />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><FolderView /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/file" 
-              element={
-                <ProtectedRoute>
-                  <FileView />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><FileView /></ProtectedRoute>} 
             />
 
             <Route 
               path="/vault/folder" 
-              element={
-                <ProtectedRoute>
-                  <FolderView />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><FolderView /></ProtectedRoute>} 
             />
             
             <Route 
               path="/vault/:vaultId" 
-              element={
-                <ProtectedRoute>
-                  <VaultDashboard />
-                </ProtectedRoute>
-              } 
+              element={<ProtectedRoute><VaultDashboard /></ProtectedRoute>} 
             />
 
-            <Route 
-              path="*" 
-              element={<Navigate to="/" replace />} 
-            />
+            <Route path="*" element={<Navigate to="/" replace />} />
 
           </Routes>
         </VaultProvider>

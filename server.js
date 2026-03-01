@@ -4223,6 +4223,165 @@ app.get("/api/debug/file/:fileId", authenticateToken, async (req, res) => {
   });
 });
 
+app.get("/api/vaults/join/:vaultId", async (req, res) => {
+  try {
+    const { vaultId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(vaultId)) {
+      return res.status(400).json({ message: "Invalid vault ID" });
+    }
+
+    const vault = await Vault.findOne({ _id: vaultId, isActive: true });
+    if (!vault) {
+      return res.status(404).json({ message: "Vault not found or no longer available" });
+    }
+
+    // Return only public info — never expose passwordHash, userId, etc.
+    res.status(200).json({
+      vault: {
+        id:           vault._id,
+        name:         vault.name,
+        description:  vault.description || "",
+        hasPassword:  vault.hasPassword,
+        passwordHint: vault.passwordHint || null,
+        createdAt:    vault.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Vault Join Info Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+// ── POST /api/vaults/join/:vaultId  ──────────────────────────────────────────
+// AUTHENTICATED — instantly adds the user as an active vault member.
+// No pending state, no approval needed.
+
+app.post("/api/vaults/join/:vaultId", authenticateToken, async (req, res) => {
+  try {
+    const { vaultId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(vaultId)) {
+      return res.status(400).json({ message: "Invalid vault ID" });
+    }
+
+    const vault = await Vault.findOne({ _id: vaultId, isActive: true });
+    if (!vault) {
+      return res.status(404).json({ message: "Vault not found" });
+    }
+
+    const user = await User.findById(req.user.userId).select("fullName email");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Owner can't join their own vault
+    if (vault.userId.toString() === req.user.userId) {
+      return res.status(400).json({
+        message:      "This is your own vault.",
+        alreadyOwner: true,
+        vault:        { id: vault._id, name: vault.name },
+      });
+    }
+
+    // Check for existing active share
+    const existing = await VaultShare.findOne({ vaultId, email: user.email });
+
+    if (existing) {
+      if (existing.status === "active") {
+        return res.status(200).json({
+          message:       "You already have access to this vault.",
+          alreadyMember: true,
+          vault:         { id: vault._id, name: vault.name },
+        });
+      }
+
+      // If there's a stale pending/revoked share, reactivate it instantly
+      existing.status   = "active";
+      existing.joinedAt = new Date();
+      await existing.save();
+
+      return res.status(200).json({
+        message: "Welcome back! You've rejoined the vault.",
+        vault:   { id: vault._id, name: vault.name },
+      });
+    }
+
+    // Create a new active share instantly
+    await VaultShare.create({
+      vaultId,
+      ownerId:     vault.userId,
+      userId:      req.user.userId,
+      email:       user.email,
+      role:        "viewer",
+      permissions: { view: true, upload: false, edit: false, delete: false, share: false },
+      canDownload: false,
+      status:      "active",   // ← instant, no approval needed
+      joinedAt:    new Date(),
+    });
+
+    // Optional: notify vault owner that someone joined
+    try {
+      const owner = await User.findById(vault.userId).select("email fullName");
+      if (owner) {
+        await resend.emails.send({
+          from:    "AirVault <noreply@airvault.me>",
+          to:      owner.email,
+          subject: `${user.fullName} joined your vault "${vault.name}"`,
+          html: `
+<!DOCTYPE html>
+<html>
+<head><style>
+  body{font-family:'Segoe UI',sans-serif;background:#0f172a;margin:0;padding:0}
+  .wrap{max-width:520px;margin:40px auto;background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:16px;overflow:hidden;border:1px solid #1e3a5f}
+  .hdr{background:linear-gradient(135deg,#3b82f6,#06b6d4);padding:32px;text-align:center}
+  .hdr h1{color:#fff;margin:0;font-size:22px;font-weight:800}
+  .body{padding:28px}
+  p{color:#94a3b8;line-height:1.7;font-size:14px;margin:0 0 16px}
+  .card{background:rgba(30,58,95,0.4);border:1px solid #1e3a5f;border-radius:12px;padding:18px;margin:16px 0}
+  .btn{display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#3b82f6,#06b6d4);color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px}
+  .footer{background:#060d1a;padding:20px;text-align:center;border-top:1px solid #1e293b}
+  .footer p{color:#334155;font-size:11px;margin:4px 0}
+</style></head>
+<body>
+<div class="wrap">
+  <div class="hdr"><h1>🔒 AirVault — New Member</h1></div>
+  <div class="body">
+    <p style="color:#e2e8f0;font-size:16px;font-weight:600">Someone joined your vault</p>
+    <div class="card">
+      <p style="margin:0 0 4px;color:#f1f5f9;font-size:15px;font-weight:700">${user.fullName}</p>
+      <p style="margin:0;color:#64748b;font-size:13px">${user.email}</p>
+    </div>
+    <p>They now have viewer access to <strong style="color:#f1f5f9">${vault.name}</strong>. You can manage their permissions from the Members page.</p>
+    <div style="text-align:center;margin:24px 0">
+      <a href="${process.env.FRONTEND_URL || "http://localhost:5173"}/vault/${vaultId}/members" class="btn">Manage Members →</a>
+    </div>
+  </div>
+  <div class="footer"><p>© 2026 AirVault. Zero-knowledge encrypted storage.</p></div>
+</div>
+</body>
+</html>`,
+        });
+      }
+    } catch (emailErr) {
+      console.warn("Join notification email failed:", emailErr.message);
+      // Don't fail the request if email fails
+    }
+
+    // "Access Granted" matches ACTION_CONFIG in AccessLog.jsx
+    await createVaultAuditLog(vaultId, req.user.userId, user.email, "Access Granted", req);
+
+    res.status(201).json({
+      message: `You've successfully joined "${vault.name}"!`,
+      vault:   { id: vault._id, name: vault.name },
+    });
+
+  } catch (error) {
+    console.error("Vault Join Error:", error);
+    res.status(500).json({ message: "Server error during vault join" });
+  }
+});
+
+
 // LOGOUT
 app.post("/api/auth/logout", authenticateToken, async (req, res) => {
   try {

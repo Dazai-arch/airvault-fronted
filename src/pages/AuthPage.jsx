@@ -15,6 +15,8 @@ import {
   Sun,
 } from "lucide-react";
 import { useTheme } from '../context/ThemeContext';
+// ✅ NEW: Import the post-auth redirect hook
+import { usePostAuthRedirect } from '../hooks/usePostAuthRedirect';
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
@@ -23,6 +25,9 @@ const API_URL =
 const AuthPage = () => {
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
+  // ✅ NEW: Initialize the post-auth redirect handler
+  const handlePostAuth = usePostAuthRedirect();
+
   const [page, setPage] = useState("login");
   const [showPass, setShowPass] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -159,6 +164,7 @@ const AuthPage = () => {
     }
   };
 
+  // ✅ UPDATED: handleVerifyOtp now uses handlePostAuth instead of hardcoded navigate
   const handleVerifyOtp = async () => {
     setError("");
     setSuccess("");
@@ -182,10 +188,12 @@ const AuthPage = () => {
       const data = await response.json();
       
       if (response.ok) {
+        // Clear any stale tokens first
         localStorage.removeItem("token");
         sessionStorage.removeItem("token");
         localStorage.removeItem("user");
         
+        // Save token based on remember me preference
         if (otpType === "login") {
           if (rememberMe) {
             localStorage.setItem("token", data.token);
@@ -193,11 +201,13 @@ const AuthPage = () => {
             sessionStorage.setItem("token", data.token);
           }
         } else {
+          // Signup always uses localStorage
           localStorage.setItem("token", data.token);
         }
         
         localStorage.setItem("user", JSON.stringify(data.user));
         
+        // Verify storage worked
         const verifyToken = localStorage.getItem("token") || sessionStorage.getItem("token");
         const verifyUser = localStorage.getItem("user");
         
@@ -208,8 +218,13 @@ const AuthPage = () => {
         
         setSuccess(data.message);
         
+        // ✅ CHANGED: Use handlePostAuth instead of hardcoded navigate
+        // This checks (in order):
+        //   1. ?redirect= query param in the URL
+        //   2. sessionStorage "pendingVaultJoin" (set by VaultJoinPage for unauthenticated users)
+        //   3. Falls back to /maindashboard
         setTimeout(() => {
-          navigate(data.redirectTo || "/vaults", { replace: true });
+          handlePostAuth(data.redirectTo || "/maindashboard");
         }, 100);
         
       } else {

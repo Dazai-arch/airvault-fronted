@@ -393,7 +393,8 @@ const SendModal = ({ device, isDark, onClose, rtcSession }) => {
                     <span>{files.length} file{files.length > 1 ? 's' : ''} · {formatSize(totalBytes)}</span>
                     <button onClick={() => setFiles([])} className="text-red-400 hover:text-red-300">Clear</button>
                   </div>
-                  <div className="max-h-36 overflow-y-auto">
+                  {/* ── file list: purple scrollbar ── */}
+                  <div className="max-h-36 overflow-y-auto air-scrollbar">
                     {files.map((f, i) => {
                       const FIcon = getFileIcon(f);
                       return (
@@ -514,7 +515,8 @@ const ReceiveDrawer = ({ isDark, received, onClose }) => (
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
+        {/* ── received list: purple scrollbar ── */}
+        <div className="space-y-2 max-h-64 overflow-y-auto air-scrollbar pr-1">
           {received.map((f, i) => (
             <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border ${isDark ? 'border-slate-700/50' : 'border-gray-200'}`}>
               <File className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-violet-400' : 'text-violet-600'}`} />
@@ -856,7 +858,8 @@ const AirDrop = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto">
+        {/* ── main page scroll area: purple scrollbar ── */}
+        <div className="flex-1 overflow-y-auto air-scrollbar">
           <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-6">
             <div className="text-center">
               <h1 className="text-4xl sm:text-5xl font-black mb-3 bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
@@ -1004,6 +1007,18 @@ const AirDrop = () => {
       {showReceiveDrawer && (
         <ReceiveDrawer isDark={isDark} received={receivedFiles} onClose={() => setShowReceiveDrawer(false)} />
       )}
+
+      {/*
+        Purple scrollbar — same pattern as VaultDashboard's vault-scrollbar,
+        colour swapped to violet to match AirDrop's design language.
+        4px width suppresses webkit arrow buttons natively.
+      */}
+      <style>{`
+        .air-scrollbar::-webkit-scrollbar { width: 4px; }
+        .air-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .air-scrollbar::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.4); border-radius: 2px; }
+        .air-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.65); }
+      `}</style>
     </div>
   );
 };

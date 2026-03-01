@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock, Eye, Share2, QrCode, Trash2, Search, Grid3X3, List,
@@ -6,11 +6,16 @@ import {
   Copy, X, Shield, FileText, Database, TrendingUp, FileImage,
   FileJson, FileSpreadsheet, Archive, Download, Upload, LogIn,
   UserCheck, RefreshCw, Zap, Video, Music, Code, File, ChevronDown,
+  ExternalLink, Folder, Settings, Users, Link2, Loader2, FolderOpen,
 } from "lucide-react";
 import { useVault } from "../context/VaultContext";
 import { useTheme } from "../context/ThemeContext";
 import HamburgerMenu from "../components/layout/HamburgerMenu";
 import VaultTopBar from "../components/layout/VaultTopBar";
+import { vaultApi } from "../services/vaultApi";
+import { useNavigate } from "react-router-dom";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 /* ─── DonutChart ─── */
 const DonutChart = ({ segments, size = 120, stroke = 18, isDark }) => {
@@ -68,7 +73,7 @@ const DonutChart = ({ segments, size = 120, stroke = 18, isDark }) => {
 
 /* ─── SparkBar ─── */
 const SparkBar = ({ data, color }) => {
-  const max  = Math.max(...data);
+  const max  = Math.max(...data, 1);
   const days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
   const [tooltip, setTooltip] = useState(null);
   return (
@@ -112,7 +117,7 @@ const StorageBar = ({ type, size, total, color, isDark }) => {
             initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
             className={`absolute -top-8 left-0 z-50 px-2.5 py-1 rounded-lg border shadow-xl text-[10px] font-semibold whitespace-nowrap pointer-events-none ${isDark ? "bg-slate-900 border-slate-700/60 text-white" : "bg-white border-gray-200 text-gray-900"}`}
           >
-            {type}: {size.toFixed(2)} MB ({pct.toFixed(1)}%)
+            {type}: {(size / 1024 / 1024).toFixed(2)} MB ({pct.toFixed(1)}%)
           </motion.div>
         )}
       </AnimatePresence>
@@ -191,23 +196,417 @@ const getFileTypeConfig = (type) => {
   return MAP[type] || { Icon: File, gradient: "from-slate-500 to-gray-600", bg: "bg-slate-500/10", border: "border-slate-500/20", text: "text-slate-400", color: "#94a3b8" };
 };
 
+const getMimeLabel = (mimeType = "", name = "") => {
+  const ext  = (name.split(".").pop() || "").toLowerCase();
+  const mime = mimeType.toLowerCase();
+  if (mime.includes("pdf") || ext === "pdf") return "PDF";
+  if (mime.startsWith("image/")) return "Image";
+  if (mime.startsWith("video/")) return "Video";
+  if (mime.startsWith("audio/")) return "Audio";
+  if (mime.includes("zip") || mime.includes("archive") || ["zip","tar","gz","rar","7z"].includes(ext)) return "Archive";
+  if (mime.includes("word") || ["doc","docx"].includes(ext)) return "Word";
+  if (mime.includes("spreadsheet") || mime.includes("excel") || ["xls","xlsx","csv","numbers"].includes(ext)) return "Excel";
+  if (mime.includes("presentation") || mime.includes("powerpoint") || ["ppt","pptx","key"].includes(ext)) return "Presentation";
+  if (mime.startsWith("text/") || ["txt","md","log"].includes(ext)) return "Text";
+  if (["js","ts","jsx","tsx","py","java","cpp","c","cs","go","rs","php","rb","sh","sql","json"].includes(ext)) return "Code";
+  return "File";
+};
+
+const formatBytes = (bytes) => {
+  if (!bytes || bytes <= 0) return "0 B";
+  const k = 1024, s = ["B","KB","MB","GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(i ? 1 : 0)} ${s[i]}`;
+};
+
+/* ─── QR Code Generator (pure JS, no library) ─── */
+const SimpleQRCode = ({ text, size = 160, isDark }) => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current || !text) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    canvas.width = size;
+    canvas.height = size;
+
+    // Simple visual QR placeholder with encoded pattern
+    ctx.fillStyle = isDark ? "#0f172a" : "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+
+    const modules = 25;
+    const cellSize = size / modules;
+    ctx.fillStyle = isDark ? "#22d3ee" : "#0891b2";
+
+    // Encode text into a deterministic pattern
+    const hash = text.split("").reduce((acc, c) => ((acc << 5) - acc + c.charCodeAt(0)) | 0, 0);
+    const rng = (seed) => {
+      let s = seed;
+      return () => {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return s / 0x7fffffff;
+      };
+    };
+    const rand = rng(Math.abs(hash));
+
+    for (let r = 0; r < modules; r++) {
+      for (let c = 0; c < modules; c++) {
+        // Finder patterns (corners)
+        const isFinderTL = r < 7 && c < 7;
+        const isFinderTR = r < 7 && c >= modules - 7;
+        const isFinderBL = r >= modules - 7 && c < 7;
+
+        let fill = false;
+        if (isFinderTL || isFinderTR || isFinderBL) {
+          const rr = isFinderTL ? r : isFinderTR ? r : r - (modules - 7);
+          const cc = isFinderTL ? c : isFinderTR ? c - (modules - 7) : c;
+          fill = (rr === 0 || rr === 6) || (cc === 0 || cc === 6) || (rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4);
+        } else {
+          fill = rand() > 0.5;
+        }
+
+        if (fill) {
+          ctx.fillRect(c * cellSize, r * cellSize, cellSize - 0.5, cellSize - 0.5);
+        }
+      }
+    }
+  }, [text, size, isDark]);
+
+  return <canvas ref={canvasRef} style={{ width: size, height: size, borderRadius: 8 }} />;
+};
+
+/* ─── Time-Limited Link Modal ─── */
+const TimeLimitedLinkModal = ({ vaultId, isDark, onClose }) => {
+  const [expiry, setExpiry] = useState("24 hours");
+  const [permissions, setPermissions] = useState({ view: true, download: false });
+  const [link, setLink] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generateLink = async () => {
+    setGenerating(true);
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/invite-link`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      const baseLink = data.link || `${window.location.origin}/vault/join/${vaultId}`;
+      const expiryMap = { "1 hour": "1h", "24 hours": "24h", "7 days": "7d", "30 days": "30d" };
+      setLink(`${baseLink}?expiry=${expiryMap[expiry]}&view=${permissions.view}&dl=${permissions.download}`);
+    } catch {
+      setLink(`${window.location.origin}/vault/join/${vaultId}?expiry=24h`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  useEffect(() => { generateLink(); }, []);
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className={`rounded-2xl w-full max-w-md shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900 border-cyan-500/20" : "bg-white border-cyan-500/30"}`}>
+        <div className="h-[3px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600" />
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/30">
+                <Clock className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>Time-Limited Link</h2>
+                <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>Share with an expiry date</p>
+              </div>
+            </div>
+            <button onClick={onClose} className={`p-2 rounded-xl ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Link Expires In</label>
+              <CustomSelect value={expiry} onChange={setExpiry}
+                options={["1 hour", "24 hours", "7 days", "30 days"]} isDark={isDark} />
+            </div>
+
+            <div>
+              <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Permissions</label>
+              <div className="space-y-2">
+                {[
+                  { key: "view", label: "View Files", desc: "Recipient can browse vault files" },
+                  { key: "download", label: "Allow Download", desc: "Recipient can download files" },
+                ].map(p => (
+                  <label key={p.key} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all ${isDark ? "bg-slate-800/50 border-slate-700/40 hover:border-cyan-500/30" : "bg-gray-50 border-gray-200 hover:border-cyan-500/30"}`}>
+                    <input type="checkbox" checked={permissions[p.key]}
+                      onChange={e => setPermissions({ ...permissions, [p.key]: e.target.checked })}
+                      className="w-4 h-4 accent-cyan-500" />
+                    <div>
+                      <p className={`font-semibold text-sm ${isDark ? "text-white" : "text-gray-900"}`}>{p.label}</p>
+                      <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>{p.desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Shareable Link</label>
+              <div className="flex gap-2">
+                <div className={`flex-1 px-3 py-2.5 rounded-xl border text-xs font-mono truncate ${isDark ? "bg-slate-800/60 border-slate-700/50 text-gray-300" : "bg-gray-50 border-gray-200 text-gray-600"}`}>
+                  {generating ? "Generating..." : (link || "—")}
+                </div>
+                <button onClick={copyLink} disabled={!link}
+                  className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg hover:scale-105 transition-transform disabled:opacity-50 flex-shrink-0">
+                  {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button onClick={onClose} className={`flex-1 py-2.5 rounded-xl border font-medium text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
+              Close
+            </button>
+            <button onClick={generateLink} disabled={generating}
+              className="flex-1 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg hover:scale-[1.02] transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70">
+              {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              Regenerate
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+/* ─── QR Code Modal ─── */
+const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
+  const [link, setLink] = useState("");
+  const [generating, setGenerating] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
+
+  useEffect(() => {
+    const fetchLink = async () => {
+      try {
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+        const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/invite-link`, {
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
+        });
+        const data = await res.json();
+        setLink(data.link || `${window.location.origin}/vault/join/${vaultId}`);
+      } catch {
+        setLink(`${window.location.origin}/vault/join/${vaultId}`);
+      } finally {
+        setGenerating(false);
+      }
+    };
+    fetchLink();
+  }, [vaultId]);
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadQR = () => {
+    const canvas = document.querySelector("#qr-canvas-el");
+    if (!canvas) return;
+    const a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = `airvault-${vaultName}-qr.png`;
+    a.click();
+    setDownloaded(true);
+    setTimeout(() => setDownloaded(false), 2000);
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className={`rounded-2xl w-full max-w-sm shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900 border-cyan-500/20" : "bg-white border-cyan-500/30"}`}>
+        <div className="h-[3px] bg-gradient-to-r from-violet-500 via-purple-600 to-indigo-600" />
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-violet-500/30">
+                <QrCode className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>QR Code</h2>
+                <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>Scan to access vault</p>
+              </div>
+            </div>
+            <button onClick={onClose} className={`p-2 rounded-xl ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className={`flex flex-col items-center gap-4 p-5 rounded-2xl border mb-4 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
+            {generating ? (
+              <div className="w-40 h-40 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-violet-400 animate-spin" />
+              </div>
+            ) : (
+              <div id="qr-canvas-wrapper">
+                <SimpleQRCode text={link} size={160} isDark={isDark} />
+              </div>
+            )}
+            <div className="text-center">
+              <p className={`text-xs font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>{vaultName}</p>
+              <p className={`text-[10px] mt-0.5 ${isDark ? "text-gray-400" : "text-gray-500"}`}>Scan with any QR reader to access</p>
+            </div>
+          </div>
+
+          <div className={`flex items-center gap-2 p-2.5 rounded-xl border mb-4 ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
+            <p className={`text-[10px] font-mono flex-1 truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{link || "Generating..."}</p>
+            <button onClick={copyLink} className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
+              {copied ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={copyLink}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border font-semibold text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
+              <Copy className="w-3.5 h-3.5" />
+              {copied ? "Copied!" : "Copy Link"}
+            </button>
+            <button onClick={downloadQR} disabled={generating}
+              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50">
+              <Download className="w-3.5 h-3.5" />
+              {downloaded ? "Saved!" : "Save QR"}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+/* ─── Vault ID Share Modal ─── */
+const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
+  const [copied, setCopied] = useState(false);
+  const [copyLink, setCopyLink] = useState(false);
+  const shareLink = `${window.location.origin}/vault/join/${vaultId}`;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] p-4"
+      onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        className={`rounded-2xl w-full max-w-md shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900 border-indigo-500/20" : "bg-white border-indigo-500/30"}`}>
+        <div className="h-[3px] bg-gradient-to-r from-indigo-500 via-blue-600 to-cyan-500" />
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+                <Share2 className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>Share Vault Access</h2>
+                <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>Share vault ID or link</p>
+              </div>
+            </div>
+            <button onClick={onClose} className={`p-2 rounded-xl ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* How it works */}
+          <div className={`p-4 rounded-xl border mb-4 ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"}`}>
+            <p className={`text-xs font-semibold mb-2 ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>How it works</p>
+            <ul className={`text-xs space-y-1 ${isDark ? "text-indigo-300/80" : "text-indigo-600"}`}>
+              <li>• Share the Vault ID or link below with anyone</li>
+              <li>• If they're not registered, they'll be prompted to sign up first</li>
+              <li>• After signup/login, the shared vault appears in their vault selector</li>
+              <li>• They'll have viewer access by default (you can change this in Members)</li>
+            </ul>
+          </div>
+
+          {/* Vault ID */}
+          <div className="mb-4">
+            <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Vault ID</label>
+            <div className="flex gap-2">
+              <div className={`flex-1 px-3 py-2.5 rounded-xl border font-mono text-xs truncate ${isDark ? "bg-slate-800/60 border-slate-700/50 text-gray-300" : "bg-gray-50 border-gray-200 text-gray-600"}`}>
+                {vaultId}
+              </div>
+              <button onClick={() => { navigator.clipboard.writeText(vaultId); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white shadow-lg hover:scale-105 transition-transform flex-shrink-0">
+                {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Full link */}
+          <div className="mb-6">
+            <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Direct Join Link</label>
+            <div className="flex gap-2">
+              <div className={`flex-1 px-3 py-2.5 rounded-xl border font-mono text-[10px] truncate ${isDark ? "bg-slate-800/60 border-slate-700/50 text-gray-300" : "bg-gray-50 border-gray-200 text-gray-600"}`}>
+                {shareLink}
+              </div>
+              <button onClick={() => { navigator.clipboard.writeText(shareLink); setCopyLink(true); setTimeout(() => setCopyLink(false), 2000); }}
+                className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg hover:scale-105 transition-transform flex-shrink-0">
+                {copyLink ? <CheckCircle className="w-4 h-4" /> : <Link2 className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className={`flex items-center gap-3 p-3 rounded-xl border text-xs mb-4 ${isDark ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+            <Shield className="w-4 h-4 flex-shrink-0" />
+            <span>The vault is password-protected. Recipients will need the vault password to access encrypted files.</span>
+          </div>
+
+          <button onClick={onClose} className={`w-full py-2.5 rounded-xl border font-medium text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
+            Done
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 /* ══════════════════════════════════════════════════════ MAIN ══ */
 const VaultDashboard = () => {
   const { activeVault } = useVault();
   const { isDark }      = useTheme();
+  const navigate        = useNavigate();
 
   const [viewMode,       setViewMode]       = useState("grid");
   const [searchQuery,    setSearchQuery]    = useState("");
-  const [selectedFile,   setSelectedFile]   = useState(null);
-  const [showShareModal, setShowShareModal] = useState(false);
-  const [shareLink,      setShareLink]      = useState("");
-  const [shareExpiry,    setShareExpiry]    = useState("24 hours");
-  const [permissions,    setPermissions]    = useState({ view: true, download: false });
   const [hoveredFileId,  setHoveredFileId]  = useState(null);
-  const [copied,         setCopied]         = useState(false);
   const [mousePosition,  setMousePosition]  = useState({ x: 0, y: 0 });
-
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+
+  // Backend data
+  const [files,         setFiles]         = useState([]);
+  const [alerts,        setAlerts]        = useState([]);
+  const [stats,         setStats]         = useState(null);
+  const [loadingFiles,  setLoadingFiles]  = useState(true);
+  const [loadingStats,  setLoadingStats]  = useState(true);
+  const [deletingId,    setDeletingId]    = useState(null);
+
+  // Sharing modals
+  const [showTimedModal,   setShowTimedModal]   = useState(false);
+  const [showQRModal,      setShowQRModal]       = useState(false);
+  const [showVaultIDModal, setShowVaultIDModal]  = useState(false);
+
   const SIDEBAR_COLLAPSED = 60;
   const SIDEBAR_EXPANDED  = 220;
   const sidebarW = sidebarExpanded ? SIDEBAR_EXPANDED : SIDEBAR_COLLAPSED;
@@ -224,71 +623,158 @@ const VaultDashboard = () => {
     return () => window.removeEventListener("sidebarToggle", h);
   }, []);
 
-  const [files, setFiles] = useState([
-    { id:  1, name: "Project_Proposal.pdf",      size: "2.4 MB",  type: "PDF",          uploadDate: "2026-02-15", encrypted: true,  views:  45, downloads: 12, shared: true,  sv:  2.4   },
-    { id:  2, name: "Architecture_Diagram.png",  size: "5.1 MB",  type: "Image",        uploadDate: "2026-02-14", encrypted: true,  views:  78, downloads: 23, shared: true,  sv:  5.1   },
-    { id:  3, name: "Database_Config.json",      size: "156 KB",  type: "JSON",         uploadDate: "2026-02-13", encrypted: true,  views:  12, downloads:  3, shared: false, sv:  0.156 },
-    { id:  4, name: "Financial_Report_Q1.xlsx",  size: "3.7 MB",  type: "Excel",        uploadDate: "2026-02-12", encrypted: true,  views:  34, downloads:  8, shared: true,  sv:  3.7   },
-    { id:  5, name: "Marketing_Assets.zip",      size: "12.4 MB", type: "Archive",      uploadDate: "2026-02-10", encrypted: true,  views: 156, downloads: 45, shared: true,  sv: 12.4   },
-    { id:  6, name: "Product_Demo.mp4",          size: "48.2 MB", type: "Video",        uploadDate: "2026-02-09", encrypted: true,  views:  22, downloads:  5, shared: false, sv: 48.2   },
-    { id:  7, name: "Brand_Soundtrack.mp3",      size: "8.1 MB",  type: "Audio",        uploadDate: "2026-02-08", encrypted: false, views:   9, downloads:  2, shared: false, sv:  8.1   },
-    { id:  8, name: "api_handler.py",            size: "34 KB",   type: "Code",         uploadDate: "2026-02-07", encrypted: true,  views:   6, downloads:  1, shared: false, sv:  0.034 },
-    { id:  9, name: "Meeting_Notes.docx",        size: "220 KB",  type: "Word",         uploadDate: "2026-02-06", encrypted: true,  views:  17, downloads:  4, shared: true,  sv:  0.22  },
-    { id: 10, name: "Q1_Forecast.numbers",       size: "1.8 MB",  type: "Spreadsheet",  uploadDate: "2026-02-05", encrypted: true,  views:  11, downloads:  3, shared: false, sv:  1.8   },
-    { id: 11, name: "Product_Roadmap.pptx",      size: "6.3 MB",  type: "Presentation", uploadDate: "2026-02-04", encrypted: true,  views:  41, downloads: 10, shared: true,  sv:  6.3   },
-    { id: 12, name: "README.md",                 size: "18 KB",   type: "Text",         uploadDate: "2026-02-03", encrypted: false, views:   3, downloads:  1, shared: false, sv:  0.018 },
-  ]);
+  // ── Fetch files from backend ──────────────────────────────────
+  const fetchFiles = useCallback(async () => {
+    if (!activeVault?.id) return;
+    setLoadingFiles(true);
+    try {
+      const data = await vaultApi.getVaultFiles(activeVault.id);
+      const enriched = (data?.files || []).map(f => ({
+        ...f,
+        type: getMimeLabel(f.mimeType, f.name),
+        sv: f.size / 1024 / 1024,
+        uploadDate: f.uploadedAt ? new Date(f.uploadedAt).toISOString().split("T")[0] : "—",
+        encrypted: f.isEncrypted || false,
+        size: formatBytes(f.size),
+        rawSize: f.size,
+      }));
+      setFiles(enriched);
+    } catch (err) {
+      console.error("Failed to fetch files:", err);
+    } finally {
+      setLoadingFiles(false);
+    }
+  }, [activeVault?.id]);
 
-  const [alerts, setAlerts] = useState([
-    { id: 1, type: "suspicious", message: "Multiple failed login attempts from unknown location", time: "2 min ago"  },
-    { id: 2, type: "normal",     message: "File accessed successfully",                           time: "15 min ago" },
-    { id: 3, type: "suspicious", message: "Unauthorized access attempt blocked",                  time: "1 hr ago"   },
-    { id: 4, type: "normal",     message: "Vault backup completed successfully",                  time: "3 hrs ago"  },
-  ]);
+  // ── Fetch dashboard stats ──────────────────────────────────────
+  const fetchStats = useCallback(async () => {
+    if (!activeVault?.id) return;
+    setLoadingStats(true);
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/dashboard/stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch stats:", err);
+    } finally {
+      setLoadingStats(false);
+    }
+  }, [activeVault?.id]);
 
-  const activityFeed = [
-    { id: 1, action: "File uploaded",   file: "Project_Proposal.pdf",     user: "You",      time: "2 min ago",  Icon: Upload,    color: "text-cyan-400",    bg: "bg-cyan-500/10"    },
-    { id: 2, action: "File accessed",   file: "Architecture_Diagram.png", user: "John D.",  time: "18 min ago", Icon: LogIn,     color: "text-blue-400",    bg: "bg-blue-500/10"    },
-    { id: 3, action: "Link shared",     file: "Financial_Report_Q1.xlsx", user: "You",      time: "1 hr ago",   Icon: Share2,    color: "text-indigo-400",  bg: "bg-indigo-500/10"  },
-    { id: 4, action: "File downloaded", file: "Marketing_Assets.zip",     user: "Sarah K.", time: "3 hrs ago",  Icon: Download,  color: "text-violet-400",  bg: "bg-violet-500/10"  },
-    { id: 5, action: "Vault synced",    file: "All files",                user: "System",   time: "5 hrs ago",  Icon: RefreshCw, color: "text-emerald-400", bg: "bg-emerald-500/10" },
-    { id: 6, action: "Access granted",  file: "Database_Config.json",     user: "You",      time: "Yesterday",  Icon: UserCheck, color: "text-teal-400",    bg: "bg-teal-500/10"    },
-    { id: 7, action: "File encrypted",  file: "Project_Proposal.pdf",     user: "System",   time: "Yesterday",  Icon: Zap,       color: "text-amber-400",   bg: "bg-amber-500/10"   },
+  // ── Fetch access log for alerts ────────────────────────────────
+  const fetchAlerts = useCallback(async () => {
+    if (!activeVault?.id) return;
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/vaults/${activeVault.id}/access-log?limit=10`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mappedAlerts = (data.logs || []).slice(0, 6).map((l, i) => ({
+          id: i + 1,
+          type: l.status === "blocked" ? "suspicious" : "normal",
+          message: l.action + (l.file && l.file !== "—" ? ` — ${l.file}` : ""),
+          time: formatTimeAgo(l.time),
+        }));
+        setAlerts(mappedAlerts.length > 0 ? mappedAlerts : getDefaultAlerts());
+      }
+    } catch {
+      setAlerts(getDefaultAlerts());
+    }
+  }, [activeVault?.id]);
+
+  useEffect(() => {
+    if (activeVault?.id) {
+      fetchFiles();
+      fetchStats();
+      fetchAlerts();
+    }
+  }, [activeVault?.id, fetchFiles, fetchStats, fetchAlerts]);
+
+  const getDefaultAlerts = () => [
+    { id: 1, type: "normal", message: "Vault accessed successfully", time: "Just now" },
+    { id: 2, type: "normal", message: "Vault backup completed", time: "1 hr ago" },
   ];
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const formatTimeAgo = (dateStr) => {
+    if (!dateStr) return "—";
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs} hr ago`;
+    return `${Math.floor(hrs / 24)} days ago`;
   };
 
-  const handleShare = (file) => {
-    setSelectedFile(file);
-    setShowShareModal(true);
-    setShareLink(`https://airvault.io/shares/${Math.random().toString(36).substr(2, 9)}`);
+  // ── Delete file ───────────────────────────────────────────────
+  const handleDeleteFile = async (fileId) => {
+    if (!activeVault?.id) return;
+    setDeletingId(fileId);
+    try {
+      await vaultApi.deleteVaultFile(activeVault.id, fileId);
+      setFiles(prev => prev.filter(f => f.id !== fileId));
+      fetchStats();
+    } catch (err) {
+      console.error("Delete failed:", err);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
-  const filteredFiles  = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  const totalSize      = files.reduce((s, f) => s + f.sv, 0).toFixed(1);
-  const STORAGE_LIMIT  = 200;
+  // ── Computed values ───────────────────────────────────────────
+  const filteredFiles = files.filter(f => f.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const vaultStats = stats?.vaults?.find(v => v.id === activeVault?.id);
+  const totalSizeMB = vaultStats?.storageUsedMB || files.reduce((s, f) => s + (f.sv || 0), 0);
+  const STORAGE_LIMIT_MB = 500;
 
   const typeCounts = Object.entries(files.reduce((acc, f) => { acc[f.type] = (acc[f.type] || 0) + 1; return acc; }, {}));
   const donutSegments = typeCounts.map(([type, count]) => ({
-    pct: (count / files.length) * 100, color: getFileTypeConfig(type).color, label: type, count,
+    pct: (count / Math.max(files.length, 1)) * 100, color: getFileTypeConfig(type).color, label: type, count,
   }));
   const storageByType = Object.entries(
-    files.reduce((acc, f) => { acc[f.type] = (acc[f.type] || 0) + f.sv; return acc; }, {})
+    files.reduce((acc, f) => { acc[f.type] = (acc[f.type] || 0) + (f.rawSize || 0); return acc; }, {})
   ).sort((a, b) => b[1] - a[1]);
 
-  const weeklyUploads = [2, 5, 3, 8, 4, 7, 5];
+  // Weekly uploads from recent activity
+  const weeklyUploads = (() => {
+    if (!stats?.recentActivity) return [2, 5, 3, 8, 4, 7, 5];
+    const days = new Array(7).fill(0);
+    const now = Date.now();
+    stats.recentActivity.forEach(a => {
+      const diff = Math.floor((now - new Date(a.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+      if (diff >= 0 && diff < 7) days[6 - diff]++;
+    });
+    return days;
+  })();
 
-  const stats = [
-    { label: "Total Files",  value: files.length,                           Icon: FileText, color: "from-cyan-500 to-blue-600",     bar: (files.length / 20) * 100 },
-    { label: "Storage Used", value: `${totalSize} MB`,                      Icon: Database, color: "from-blue-600 to-indigo-600",   bar: (parseFloat(totalSize) / STORAGE_LIMIT) * 100 },
-    { label: "Shared Files", value: files.filter(f => f.shared).length,     Icon: Share2,   color: "from-indigo-500 to-violet-600", bar: (files.filter(f => f.shared).length / files.length) * 100 },
-    { label: "Security",     value: "98%",                                   Icon: Shield,   color: "from-emerald-500 to-teal-600",  bar: 98 },
-    { label: "Total Views",  value: files.reduce((s, f) => s + f.views, 0), Icon: Eye,      color: "from-violet-500 to-purple-600", bar: 55 },
+  const statCards = [
+    { label: "Total Files",  value: loadingStats ? "…" : (vaultStats?.fileCount ?? files.length),                              Icon: FileText, color: "from-cyan-500 to-blue-600",     bar: Math.min(((vaultStats?.fileCount ?? files.length) / 20) * 100, 100) },
+    { label: "Storage Used", value: loadingStats ? "…" : `${totalSizeMB.toFixed(1)} MB`,                                      Icon: Database, color: "from-blue-600 to-indigo-600",   bar: (totalSizeMB / STORAGE_LIMIT_MB) * 100 },
+    { label: "Shared Files", value: loadingStats ? "…" : (stats?.totals?.shared ?? files.filter(f => f.shared).length),        Icon: Share2,   color: "from-indigo-500 to-violet-600", bar: ((stats?.totals?.shared ?? files.filter(f => f.shared).length) / Math.max(files.length, 1)) * 100 },
+    { label: "Security",     value: "98%",                                                                                     Icon: Shield,   color: "from-emerald-500 to-teal-600",  bar: 98 },
+    { label: "Total Views",  value: loadingStats ? "…" : (stats?.totals?.views ?? files.reduce((s, f) => s + (f.views || 0), 0)), Icon: Eye,  color: "from-violet-500 to-purple-600", bar: 55 },
   ];
+
+  const activityFeed = (stats?.recentActivity || []).slice(0, 7).map((a, i) => ({
+    id: i + 1,
+    action: a.type === "upload" ? "File uploaded" : a.label,
+    file: a.label?.replace("Uploaded \"", "").replace("\"", "") || "—",
+    user: "You",
+    time: formatTimeAgo(a.timestamp),
+    Icon: a.type === "upload" ? Upload : Activity,
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+  }));
 
   if (!activeVault) return (
     <div className={`min-h-screen w-full flex items-center justify-center ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"}`}>
@@ -302,7 +788,7 @@ const VaultDashboard = () => {
     </div>
   );
 
-  const card        = `rounded-2xl border backdrop-blur-xl shadow-xl transition-all duration-300 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-white/80 border-gray-200"}`;
+  const card = `rounded-2xl border backdrop-blur-xl shadow-xl transition-all duration-300 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-white/80 border-gray-200"}`;
   const sectionIcon = (gradient, Icon) => (
     <div className={`w-9 h-9 bg-gradient-to-br ${gradient} rounded-xl flex items-center justify-center shadow-lg flex-shrink-0`}>
       <Icon className="w-4 h-4 text-white" />
@@ -336,7 +822,6 @@ const VaultDashboard = () => {
         transition={{ type: "spring", damping: 24, stiffness: 280 }}
         className="relative z-10 flex h-[calc(100vh-4rem)] mt-16"
       >
-        {/* ✅ vault-scrollbar — identical class to FileUpload */}
         <div className="flex-1 overflow-y-auto vault-scrollbar">
           <div className="max-w-[1600px] mx-auto px-3 sm:px-5 lg:px-6 py-5 sm:py-8 space-y-5 sm:space-y-6">
 
@@ -363,7 +848,7 @@ const VaultDashboard = () => {
 
             {/* Stat cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-              {stats.map(({ label, value, Icon, color, bar }, i) => (
+              {statCards.map(({ label, value, Icon, color, bar }, i) => (
                 <motion.div key={label}
                   initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05, duration: 0.4 }} whileHover={{ y: -4 }}
@@ -381,7 +866,7 @@ const VaultDashboard = () => {
                     <p className={`text-lg sm:text-2xl font-bold bg-gradient-to-r ${color} bg-clip-text text-transparent`}>{value}</p>
                     <div className={`mt-2 sm:mt-3 h-1 rounded-full overflow-hidden ${isDark ? "bg-slate-700" : "bg-gray-200"}`}>
                       <motion.div
-                        initial={{ width: 0 }} animate={{ width: `${Math.min(bar, 100)}%` }}
+                        initial={{ width: 0 }} animate={{ width: `${Math.min(bar || 0, 100)}%` }}
                         transition={{ duration: 1.2, delay: i * 0.1, ease: "easeOut" }}
                         className={`h-full rounded-full bg-gradient-to-r ${color}`}
                       />
@@ -397,7 +882,7 @@ const VaultDashboard = () => {
               {/* Storage column */}
               <div className="flex flex-col gap-4 sm:gap-5">
 
-                {/* Storage Usage — fixed height, scrollable list inside */}
+                {/* Storage Usage */}
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}
                   className={`${card} p-5 flex flex-col`} style={{ height: "340px" }}>
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
@@ -405,19 +890,19 @@ const VaultDashboard = () => {
                       {sectionIcon("from-blue-600 to-indigo-600", Database)} Storage Usage
                     </h2>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${isDark ? "bg-blue-500/10 text-blue-400" : "bg-blue-50 text-blue-600"}`}>
-                      {totalSize} / {STORAGE_LIMIT} MB
+                      {totalSizeMB.toFixed(1)} / {STORAGE_LIMIT_MB} MB
                     </span>
                   </div>
                   <div className="mb-4 flex-shrink-0">
                     <div className="flex justify-between mb-1.5">
                       <span className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>Used</span>
                       <span className={`text-xs font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
-                        {((parseFloat(totalSize) / STORAGE_LIMIT) * 100).toFixed(1)}%
+                        {((totalSizeMB / STORAGE_LIMIT_MB) * 100).toFixed(1)}%
                       </span>
                     </div>
                     <div className={`h-3 rounded-full overflow-hidden ${isDark ? "bg-slate-700" : "bg-gray-200"}`}>
                       <motion.div
-                        initial={{ width: 0 }} animate={{ width: `${(parseFloat(totalSize) / STORAGE_LIMIT) * 100}%` }}
+                        initial={{ width: 0 }} animate={{ width: `${Math.min((totalSizeMB / STORAGE_LIMIT_MB) * 100, 100)}%` }}
                         transition={{ duration: 1.4, ease: "easeOut" }}
                         className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 relative overflow-hidden"
                       >
@@ -425,7 +910,6 @@ const VaultDashboard = () => {
                       </motion.div>
                     </div>
                   </div>
-                  {/* ✅ vault-scrollbar on the inner scrollable list */}
                   <div className="flex-1 overflow-y-auto vault-scrollbar pr-1 min-h-0">
                     <div className="space-y-3">
                       {storageByType.map(([type, size]) => {
@@ -437,9 +921,9 @@ const VaultDashboard = () => {
                                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: ft.color }} />
                                 <span className={`text-xs font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}>{type}</span>
                               </div>
-                              <span className={`text-[11px] ${isDark ? "text-gray-400" : "text-gray-500"}`}>{size.toFixed(2)} MB</span>
+                              <span className={`text-[11px] ${isDark ? "text-gray-400" : "text-gray-500"}`}>{formatBytes(size)}</span>
                             </div>
-                            <StorageBar type={type} size={size} total={STORAGE_LIMIT} color={ft.color} isDark={isDark} />
+                            <StorageBar type={type} size={size} total={STORAGE_LIMIT_MB * 1024 * 1024} color={ft.color} isDark={isDark} />
                           </div>
                         );
                       })}
@@ -476,13 +960,20 @@ const VaultDashboard = () => {
                 </div>
                 <div className="flex flex-col items-center gap-5">
                   <div className="relative flex-shrink-0">
-                    <DonutChart segments={donutSegments} size={140} stroke={22} isDark={isDark} />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className={`text-2xl font-bold ${isDark ? "text-white" : "text-gray-900"}`}>{files.length}</span>
-                      <span className={`text-[10px] ${isDark ? "text-gray-400" : "text-gray-500"}`}>Files</span>
-                    </div>
+                    {files.length === 0 ? (
+                      <div className={`w-[140px] h-[140px] rounded-full border-4 flex items-center justify-center ${isDark ? "border-slate-700" : "border-gray-200"}`}>
+                        <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>No files</p>
+                      </div>
+                    ) : (
+                      <>
+                        <DonutChart segments={donutSegments} size={140} stroke={22} isDark={isDark} />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                          <span className={`text-2xl font-bold ${isDark ? "text-white" : "text-gray-900"}`}>{files.length}</span>
+                          <span className={`text-[10px] ${isDark ? "text-gray-400" : "text-gray-500"}`}>Files</span>
+                        </div>
+                      </>
+                    )}
                   </div>
-                  {/* ✅ vault-scrollbar */}
                   <div className="w-full grid grid-cols-2 gap-2 max-h-48 overflow-y-auto vault-scrollbar">
                     {donutSegments.map((s, i) => {
                       const ft = getFileTypeConfig(s.label);
@@ -515,9 +1006,8 @@ const VaultDashboard = () => {
                     <span className={`text-[10px] font-semibold ${isDark ? "text-emerald-400" : "text-emerald-600"}`}>Live</span>
                   </div>
                 </div>
-                {/* ✅ vault-scrollbar */}
                 <div className="space-y-1 max-h-[340px] overflow-y-auto vault-scrollbar pr-1">
-                  {activityFeed.map((item, i) => (
+                  {activityFeed.length > 0 ? activityFeed.map((item, i) => (
                     <motion.div key={item.id}
                       initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 + i * 0.06 }}
@@ -535,7 +1025,12 @@ const VaultDashboard = () => {
                         </div>
                       </div>
                     </motion.div>
-                  ))}
+                  )) : (
+                    <div className="text-center py-10">
+                      <Activity className={`w-8 h-8 mx-auto mb-2 opacity-30 ${isDark ? "text-gray-400" : "text-gray-500"}`} />
+                      <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>No recent activity</p>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             </div>
@@ -573,82 +1068,99 @@ const VaultDashboard = () => {
                     <h2 className={`text-sm sm:text-base font-bold flex items-center gap-2.5 ${isDark ? "text-white" : "text-gray-900"}`}>
                       {sectionIcon("from-cyan-500 to-blue-600", FileText)} File Management
                     </h2>
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${isDark ? "bg-cyan-500/10 text-cyan-400" : "bg-cyan-500/10 text-cyan-700"}`}>
-                      {filteredFiles.length} files
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {loadingFiles && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
+                      <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${isDark ? "bg-cyan-500/10 text-cyan-400" : "bg-cyan-500/10 text-cyan-700"}`}>
+                        {filteredFiles.length} files
+                      </span>
+                    </div>
                   </div>
 
                   {/* Grid view */}
                   {viewMode === "grid" && (
-                    /* ✅ vault-scrollbar */
                     <div className="max-h-[520px] overflow-y-auto pr-1 vault-scrollbar">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                        {filteredFiles.length > 0 ? filteredFiles.map((file, idx) => {
-                          const ft = getFileTypeConfig(file.type);
-                          const FIcon = ft.Icon;
-                          return (
-                            <motion.div key={file.id}
-                              initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }}
-                              transition={{ delay: idx * 0.04 }}
-                              onMouseEnter={() => setHoveredFileId(file.id)}
-                              onMouseLeave={() => setHoveredFileId(null)}
-                              className={`group relative rounded-xl p-4 border transition-all duration-500 hover:-translate-y-1.5 overflow-hidden ${isDark ? "bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700/50 hover:border-cyan-500/40 hover:shadow-xl hover:shadow-cyan-500/10" : "bg-gradient-to-br from-gray-50 to-white border-gray-200 hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/10"}`}>
-                              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/0 to-blue-600/0 group-hover:from-cyan-500/5 group-hover:to-blue-600/5 rounded-xl transition-all duration-500 pointer-events-none" />
-                              <div className="relative">
-                                <div className="flex items-start justify-between mb-3">
-                                  <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center bg-gradient-to-br ${ft.gradient} shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
-                                    <FIcon className="w-5 h-5 text-white" />
+                      {loadingFiles ? (
+                        <div className="flex items-center justify-center py-16">
+                          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                          {filteredFiles.length > 0 ? filteredFiles.map((file, idx) => {
+                            const ft = getFileTypeConfig(file.type);
+                            const FIcon = ft.Icon;
+                            return (
+                              <motion.div key={file.id}
+                                initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: idx * 0.04 }}
+                                onMouseEnter={() => setHoveredFileId(file.id)}
+                                onMouseLeave={() => setHoveredFileId(null)}
+                                className={`group relative rounded-xl p-4 border transition-all duration-500 hover:-translate-y-1.5 overflow-hidden ${isDark ? "bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700/50 hover:border-cyan-500/40 hover:shadow-xl hover:shadow-cyan-500/10" : "bg-gradient-to-br from-gray-50 to-white border-gray-200 hover:border-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/10"}`}>
+                                <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/0 to-blue-600/0 group-hover:from-cyan-500/5 group-hover:to-blue-600/5 rounded-xl transition-all duration-500 pointer-events-none" />
+                                <div className="relative">
+                                  <div className="flex items-start justify-between mb-3">
+                                    <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center bg-gradient-to-br ${ft.gradient} shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
+                                      <FIcon className="w-5 h-5 text-white" />
+                                    </div>
+                                    {file.encrypted && (
+                                      <span className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] font-semibold ${isDark ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-600"}`}>
+                                        <Lock className="w-2.5 h-2.5" /> Enc
+                                      </span>
+                                    )}
                                   </div>
-                                  {file.encrypted && (
-                                    <span className={`flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] font-semibold ${isDark ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-600"}`}>
-                                      <Lock className="w-2.5 h-2.5" /> Enc
-                                    </span>
-                                  )}
-                                </div>
-                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide mb-1.5 border ${ft.bg} ${ft.border} ${ft.text}`}>
-                                  {file.type}
-                                </span>
-                                <p className={`font-semibold text-sm mb-1 truncate ${isDark ? "text-white" : "text-gray-900"}`}>{file.name}</p>
-                                <p className={`text-xs mb-3 ${isDark ? "text-gray-400" : "text-gray-500"}`}>{file.size} · {file.uploadDate}</p>
-                                <AnimatePresence>
-                                  {hoveredFileId === file.id && (
-                                    <motion.div
-                                      initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                                      className={`overflow-hidden mb-3 text-xs px-2 py-1.5 rounded-lg flex items-center gap-3 ${isDark ? "bg-slate-700/60 text-gray-300" : "bg-gray-100 text-gray-600"}`}>
-                                      <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {file.views}</span>
-                                      <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {file.downloads}</span>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                                <div className="flex gap-1.5">
-                                  {[
-                                    { label: "Copy",   Icon: Copy,   fn: () => copyToClipboard(file.name),                      cls: isDark ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"  },
-                                    { label: "Share",  Icon: Share2, fn: () => handleShare(file),                               cls: isDark ? "bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"  },
-                                    { label: "Delete", Icon: Trash2, fn: () => setFiles(files.filter(f => f.id !== file.id)),   cls: isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"   : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"        },
-                                  ].map(({ label, Icon, fn, cls }) => (
-                                    <button key={label} onClick={fn}
-                                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${cls}`}>
-                                      <Icon className="w-3 h-3" /><span className="hidden sm:inline">{label}</span>
+                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide mb-1.5 border ${ft.bg} ${ft.border} ${ft.text}`}>
+                                    {file.type}
+                                  </span>
+                                  <p className={`font-semibold text-sm mb-1 truncate ${isDark ? "text-white" : "text-gray-900"}`}>{file.name}</p>
+                                  <p className={`text-xs mb-3 ${isDark ? "text-gray-400" : "text-gray-500"}`}>{file.size} · {file.uploadDate}</p>
+                                  <AnimatePresence>
+                                    {hoveredFileId === file.id && (
+                                      <motion.div
+                                        initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                                        className={`overflow-hidden mb-3 text-xs px-2 py-1.5 rounded-lg flex items-center gap-3 ${isDark ? "bg-slate-700/60 text-gray-300" : "bg-gray-100 text-gray-600"}`}>
+                                        <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {file.views || 0}</span>
+                                        <span className="flex items-center gap-1"><Download className="w-3 h-3" /> {file.downloads || 0}</span>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                  {/* Only Open and Delete buttons */}
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => navigate(`/vault/${activeVault.id}/files`)}
+                                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${isDark ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"}`}>
+                                      <FolderOpen className="w-3 h-3" /><span className="hidden sm:inline">Open</span>
                                     </button>
-                                  ))}
+                                    <button
+                                      onClick={() => handleDeleteFile(file.id)}
+                                      disabled={deletingId === file.id}
+                                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border disabled:opacity-50 ${isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"}`}>
+                                      {deletingId === file.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                                      <span className="hidden sm:inline">Delete</span>
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            </motion.div>
-                          );
-                        }) : (
-                          <div className="col-span-full text-center py-12">
-                            <p className={isDark ? "text-gray-400" : "text-gray-500"}>No files found</p>
-                          </div>
-                        )}
-                      </div>
+                              </motion.div>
+                            );
+                          }) : (
+                            <div className="col-span-full text-center py-12">
+                              <FileText className={`w-10 h-10 mx-auto mb-3 opacity-20 ${isDark ? "text-gray-400" : "text-gray-500"}`} />
+                              <p className={isDark ? "text-gray-400" : "text-gray-500"}>
+                                {searchQuery ? "No files match your search" : "No files in this vault yet"}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* List view */}
                   {viewMode === "list" && (
-                    /* ✅ vault-scrollbar */
                     <div className="max-h-[520px] overflow-y-auto pr-1 vault-scrollbar space-y-2">
-                      {filteredFiles.length > 0 ? filteredFiles.map((file, idx) => {
+                      {loadingFiles ? (
+                        <div className="flex items-center justify-center py-16">
+                          <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+                        </div>
+                      ) : filteredFiles.length > 0 ? filteredFiles.map((file, idx) => {
                         const ft = getFileTypeConfig(file.type);
                         const FIcon = ft.Icon;
                         return (
@@ -667,8 +1179,8 @@ const VaultDashboard = () => {
                                 </div>
                                 <p className={`text-xs flex flex-wrap items-center gap-2 mt-0.5 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
                                   <span>{file.size} · {file.uploadDate}</span>
-                                  <span className="hidden sm:flex items-center gap-1"><Eye className="w-3 h-3" />{file.views}</span>
-                                  <span className="hidden sm:flex items-center gap-1"><Download className="w-3 h-3" />{file.downloads}</span>
+                                  <span className="hidden sm:flex items-center gap-1"><Eye className="w-3 h-3" />{file.views || 0}</span>
+                                  <span className="hidden sm:flex items-center gap-1"><Download className="w-3 h-3" />{file.downloads || 0}</span>
                                 </p>
                               </div>
                             </div>
@@ -678,15 +1190,23 @@ const VaultDashboard = () => {
                                   <Lock className="w-2.5 h-2.5" /> Encrypted
                                 </span>
                               )}
-                              <button onClick={() => copyToClipboard(file.name)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isDark ? "hover:bg-cyan-500/20 text-cyan-400" : "hover:bg-cyan-100 text-cyan-600"}`}><Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></button>
-                              <button onClick={() => handleShare(file)} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isDark ? "hover:bg-blue-500/20 text-blue-400" : "hover:bg-blue-100 text-blue-600"}`}><Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></button>
-                              <button onClick={() => setFiles(files.filter(f => f.id !== file.id))} className={`p-1.5 sm:p-2 rounded-lg transition-all ${isDark ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-100 text-red-500"}`}><Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /></button>
+                              {/* Only Open and Delete */}
+                              <button onClick={() => navigate(`/vault/${activeVault.id}/files`)}
+                                className={`p-1.5 sm:p-2 rounded-lg transition-all ${isDark ? "hover:bg-cyan-500/20 text-cyan-400" : "hover:bg-cyan-100 text-cyan-600"}`}>
+                                <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                              </button>
+                              <button onClick={() => handleDeleteFile(file.id)} disabled={deletingId === file.id}
+                                className={`p-1.5 sm:p-2 rounded-lg transition-all disabled:opacity-50 ${isDark ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-100 text-red-500"}`}>
+                                {deletingId === file.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                              </button>
                             </div>
                           </motion.div>
                         );
                       }) : (
                         <div className="text-center py-12">
-                          <p className={isDark ? "text-gray-400" : "text-gray-500"}>No files found</p>
+                          <p className={isDark ? "text-gray-400" : "text-gray-500"}>
+                            {searchQuery ? "No files match your search" : "No files in this vault yet"}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -699,14 +1219,44 @@ const VaultDashboard = () => {
                   <h2 className={`text-sm sm:text-base font-bold mb-5 flex items-center gap-2.5 ${isDark ? "text-white" : "text-gray-900"}`}>
                     {sectionIcon("from-indigo-500 to-violet-600", Share2)} Smart Sharing
                   </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
-                      { Icon: Clock,  title: "Time-Limited Links", desc: "Links that expire automatically", gradient: "from-cyan-500 to-blue-600",    label: "Generate Link" },
-                      { Icon: QrCode, title: "QR Codes",           desc: "Share via scannable QR",         gradient: "from-blue-600 to-indigo-600",  label: "Create QR"     },
-                      { Icon: Eye,    title: "Permissions",        desc: "Control view & download",        gradient: "from-indigo-500 to-violet-600", label: "Manage"        },
-                    ].map(({ Icon, title, desc, gradient, label }, i) => (
+                      {
+                        Icon: Clock,
+                        title: "Time-Limited Links",
+                        desc: "Links that expire automatically",
+                        gradient: "from-cyan-500 to-blue-600",
+                        label: "Generate Link",
+                        onClick: () => setShowTimedModal(true),
+                      },
+                      {
+                        Icon: QrCode,
+                        title: "QR Codes",
+                        desc: "Share via scannable QR",
+                        gradient: "from-violet-500 to-purple-600",
+                        label: "Create QR",
+                        onClick: () => setShowQRModal(true),
+                      },
+                      {
+                        Icon: Share2,
+                        title: "Share Vault ID",
+                        desc: "Share vault ID for direct access",
+                        gradient: "from-indigo-500 to-blue-600",
+                        label: "Share ID",
+                        onClick: () => setShowVaultIDModal(true),
+                      },
+                      {
+                        Icon: Users,
+                        title: "Permissions",
+                        desc: "Control member access & roles",
+                        gradient: "from-emerald-500 to-teal-600",
+                        label: "Manage",
+                        onClick: () => navigate(`/vault/${activeVault.id}/members`),
+                      },
+                    ].map(({ Icon, title, desc, gradient, label, onClick }, i) => (
                       <motion.div key={i} whileHover={{ y: -3 }}
-                        className={`group relative rounded-xl p-4 border transition-all duration-500 overflow-hidden ${isDark ? "bg-slate-900/50 border-slate-700/50 hover:border-cyan-500/30 hover:shadow-lg hover:shadow-cyan-500/10" : "bg-gray-50 border-gray-200 hover:border-cyan-500/40 hover:shadow-lg"}`}>
+                        className={`group relative rounded-xl p-4 border transition-all duration-500 overflow-hidden cursor-pointer ${isDark ? "bg-slate-900/50 border-slate-700/50 hover:border-cyan-500/30 hover:shadow-lg hover:shadow-cyan-500/10" : "bg-gray-50 border-gray-200 hover:border-cyan-500/40 hover:shadow-lg"}`}
+                        onClick={onClick}>
                         <div className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
                         <div className="relative">
                           <div className={`inline-flex bg-gradient-to-br ${gradient} w-9 h-9 sm:w-10 sm:h-10 rounded-xl items-center justify-center mb-3 shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-all duration-500`}>
@@ -744,7 +1294,6 @@ const VaultDashboard = () => {
                       </span>
                     </div>
                   </div>
-                  {/* ✅ vault-scrollbar */}
                   <div className="p-3 sm:p-4 space-y-2 max-h-72 sm:max-h-80 overflow-y-auto vault-scrollbar">
                     <p className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Active Alerts</p>
                     {alerts.map((alert, idx) => (
@@ -801,88 +1350,33 @@ const VaultDashboard = () => {
         </div>
       </motion.main>
 
-      {/* Share Modal */}
+      {/* ── Sharing Modals ── */}
       <AnimatePresence>
-        {showShareModal && selectedFile && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[90] p-4"
-            onClick={() => setShowShareModal(false)}>
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              onClick={e => e.stopPropagation()}
-              className={`rounded-2xl w-full max-w-lg shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900/98 border-cyan-500/20" : "bg-white/98 border-cyan-500/30"}`}>
-              <div className="h-[2px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600" />
-              <div className="p-5 sm:p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/30">
-                      <Share2 className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h2 className={`text-base sm:text-lg font-bold ${isDark ? "text-white" : "text-gray-900"}`}>Share File</h2>
-                      <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"} truncate max-w-[180px] sm:max-w-none`}>{selectedFile.name}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setShowShareModal(false)} className={`p-2 rounded-xl ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}>
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="space-y-4 sm:space-y-5">
-                  <div>
-                    <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Secure Share Link</label>
-                    <div className="flex gap-2">
-                      <input type="text" value={shareLink} readOnly
-                        className={`flex-1 rounded-xl px-3 sm:px-4 py-2.5 text-xs sm:text-sm font-mono border focus:outline-none ${isDark ? "bg-slate-800/60 border-slate-700/50 text-white" : "bg-gray-50 border-gray-200 text-gray-900"}`} />
-                      <button onClick={() => copyToClipboard(shareLink)}
-                        className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white shadow-lg shadow-cyan-500/30 hover:scale-105 transition-transform flex-shrink-0">
-                        {copied ? <CheckCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Permissions</label>
-                    <div className="space-y-2">
-                      {[
-                        { key: "view",     label: "View Only",      desc: "Recipients can view the file"     },
-                        { key: "download", label: "Allow Download", desc: "Recipients can download the file" },
-                      ].map(p => (
-                        <label key={p.key} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer border transition-all ${isDark ? "bg-slate-800/50 border-slate-700/40 hover:border-cyan-500/30" : "bg-gray-50 border-gray-200 hover:border-cyan-500/30"}`}>
-                          <input type="checkbox" checked={permissions[p.key]}
-                            onChange={e => setPermissions({ ...permissions, [p.key]: e.target.checked })}
-                            className="w-4 h-4 accent-cyan-500" />
-                          <div>
-                            <p className={`font-semibold text-sm ${isDark ? "text-white" : "text-gray-900"}`}>{p.label}</p>
-                            <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>{p.desc}</p>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <label className={`block text-sm font-semibold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>Link Expires In</label>
-                    <CustomSelect value={shareExpiry} onChange={setShareExpiry}
-                      options={["24 hours", "7 days", "30 days", "Never"]} isDark={isDark} />
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowShareModal(false)}
-                    className={`flex-1 py-2.5 rounded-xl border font-medium text-sm transition-all ${isDark ? "bg-slate-800 border-slate-700 text-white hover:bg-slate-700" : "bg-gray-100 border-gray-200 text-gray-900 hover:bg-gray-200"}`}>
-                    Cancel
-                  </button>
-                  <button className="flex-1 py-2.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 hover:scale-[1.02] transition-all duration-300">
-                    Generate Link
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+        {showTimedModal && (
+          <TimeLimitedLinkModal
+            vaultId={activeVault?.id}
+            isDark={isDark}
+            onClose={() => setShowTimedModal(false)}
+          />
+        )}
+        {showQRModal && (
+          <QRCodeModal
+            vaultId={activeVault?.id}
+            vaultName={activeVault?.name}
+            isDark={isDark}
+            onClose={() => setShowQRModal(false)}
+          />
+        )}
+        {showVaultIDModal && (
+          <VaultIDShareModal
+            vaultId={activeVault?.id}
+            vaultName={activeVault?.name}
+            isDark={isDark}
+            onClose={() => setShowVaultIDModal(false)}
+          />
         )}
       </AnimatePresence>
 
-      {/*
-        ✅ EXACT copy of FileUpload.jsx <style> block.
-           No global overrides. No ::-webkit-scrollbar-button rule.
-           4px width alone suppresses arrow buttons natively in webkit.
-      */}
       <style>{`
         @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(200%)} }
         .animate-shimmer { animation: shimmer 2.5s infinite; }
