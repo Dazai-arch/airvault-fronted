@@ -17,6 +17,7 @@ import VaultSharing from "./pages/VaultSharing";
 import UserProfile from "./pages/UserProfile";
 import Details from "./pages/Details";
 import FileView from "./pages/FileView";
+import VaultSettings from "./pages/VaultSettings";
 import FolderView from "./pages/FolderView";
 // ✅ NEW: Vault join page (for link/QR/vault ID sharing)
 import VaultJoinPage from "./pages/VaultJoinPage";
@@ -146,6 +147,11 @@ function App() {
             <Route 
               path="/vault/vaultsharing" 
               element={<ProtectedRoute><VaultSharing /></ProtectedRoute>} 
+            />
+
+            <Route 
+              path="/vault/settings" 
+              element={<ProtectedRoute><VaultSettings /></ProtectedRoute>} 
             />
 
             <Route 

@@ -4381,6 +4381,90 @@ app.post("/api/vaults/join/:vaultId", authenticateToken, async (req, res) => {
   }
 });
 
+app.patch("/api/vaults/:vaultId/password", authenticateToken, async (req, res) => {
+  try {
+    const { vaultId } = req.params;
+    const { action, newPassword, currentPassword, saltB64 } = req.body;
+
+    if (!["set", "change", "remove"].includes(action)) {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+
+    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
+    if (!vault) return res.status(404).json({ message: "Vault not found or access denied" });
+
+    if (action === "set") {
+      if (vault.hasPassword) return res.status(400).json({ message: "Vault already has a password. Use 'change'." });
+      if (!newPassword || newPassword.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
+
+      vault.hasPassword  = true;
+      vault.passwordHash = await bcrypt.hash(newPassword, 12);
+      await vault.save();
+
+      if (saltB64) {
+        await ZKSalt.findOneAndUpdate(
+          { vaultId },
+          { vaultId, userId: req.user.userId, saltB64, updatedAt: new Date() },
+          { upsert: true, new: true }
+        );
+      }
+
+      await createAuditLog(req.user.userId, req.user.email, "VAULT_PASSWORD_SET", req);
+      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+      return res.status(200).json({ message: "Vault password set successfully", hasPassword: true });
+    }
+
+    if (action === "change") {
+      if (!vault.hasPassword) return res.status(400).json({ message: "No password set. Use 'set'." });
+      if (!currentPassword) return res.status(400).json({ message: "Current password required" });
+      if (!newPassword || newPassword.length < 6) return res.status(400).json({ message: "New password must be at least 6 characters" });
+
+      const isValid = await bcrypt.compare(currentPassword, vault.passwordHash);
+      if (!isValid) return res.status(401).json({ message: "Current password is incorrect" });
+
+      vault.passwordHash = await bcrypt.hash(newPassword, 12);
+      await vault.save();
+
+      if (saltB64) {
+        await ZKSalt.findOneAndUpdate(
+          { vaultId },
+          { vaultId, userId: req.user.userId, saltB64, updatedAt: new Date() },
+          { upsert: true, new: true }
+        );
+      }
+
+      await createAuditLog(req.user.userId, req.user.email, "VAULT_PASSWORD_CHANGED", req);
+      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+      return res.status(200).json({ message: "Password changed successfully", hasPassword: true });
+    }
+
+    if (action === "remove") {
+      if (!vault.hasPassword) return res.status(400).json({ message: "No password to remove" });
+      if (!currentPassword) return res.status(400).json({ message: "Current password required to remove it" });
+
+      const isValid = await bcrypt.compare(currentPassword, vault.passwordHash);
+      if (!isValid) return res.status(401).json({ message: "Current password is incorrect" });
+
+      vault.hasPassword  = false;
+      vault.passwordHash = null;
+      vault.passwordHint = null;
+      await vault.save();
+
+      // Auto-unlock if was locked
+      await VaultSecurity.findOneAndUpdate({ vaultId }, { $set: { isLocked: false } });
+      // Remove ZK salt
+      await ZKSalt.deleteOne({ vaultId });
+
+      await createAuditLog(req.user.userId, req.user.email, "VAULT_PASSWORD_REMOVED", req);
+      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+      return res.status(200).json({ message: "Password removed successfully", hasPassword: false });
+    }
+
+  } catch (error) {
+    console.error("Vault Password Update Error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 // LOGOUT
 app.post("/api/auth/logout", authenticateToken, async (req, res) => {

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useLayoutEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import QRCodeLib from "qrcode";
 import {
   ArrowLeft, Shield, Link2, Users, Mail, Copy, Lock, Eye,
   Download, Edit, Globe, Wifi, CheckCircle, ChevronDown,
   Trash2, Clock, UserPlus, Loader2, RefreshCw, Settings,
-  ExternalLink, X, QrCode, Share2, Plus, AlertCircle,
+  ExternalLink, X, QrCode, Share2, Plus, AlertCircle, Key,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
@@ -14,7 +14,6 @@ import VaultTopBar from "../components/layout/VaultTopBar";
 import HamburgerMenu from "../components/layout/HamburgerMenu";
 import Toast from "../components/layout/Toast";
 import { useToast } from "../hooks/useToast";
-import { useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
