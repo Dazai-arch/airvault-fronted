@@ -4,7 +4,7 @@ import QRCodeLib from "qrcode";
 import {
   ArrowLeft, Shield, Link2, Users, Mail, Copy, Lock, Eye,
   Download, Edit, Globe, Wifi, CheckCircle, ChevronDown,
-  Trash2, Clock, UserPlus, Loader2, RefreshCw, Key, Settings,
+  Trash2, Clock, UserPlus, Loader2, RefreshCw, Settings,
   ExternalLink, X, QrCode, Share2, Plus, AlertCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -656,15 +656,6 @@ const VaultSharing = () => {
                         <textarea value={inviteMessage} onChange={(e) => setInviteMessage(e.target.value)}
                           placeholder="Add a note to the invite email…" rows={2} className={`${inputCls} resize-none`} />
                       </div>
-                      {activeVault.hasPassword && (
-                        <div className={`flex items-start gap-3 p-3.5 rounded-xl border ${isDark ? "bg-amber-500/10 border-amber-500/30" : "bg-amber-50 border-amber-200"}`}>
-                          <Key className={`w-4 h-4 mt-0.5 flex-shrink-0 ${isDark ? "text-amber-400" : "text-amber-600"}`} />
-                          <div>
-                            <p className={`text-xs font-semibold ${isDark ? "text-amber-300" : "text-amber-700"}`}>Zero-Knowledge Vault</p>
-                            <p className={`text-xs mt-0.5 ${isDark ? "text-amber-300/80" : "text-amber-600"}`}>The invited user needs the vault password to decrypt files. Share it securely out-of-band.</p>
-                          </div>
-                        </div>
-                      )}
                       <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                         onClick={handleSendInvite} disabled={sendingInvite || !inviteEmail.trim()}
                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">

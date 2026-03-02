@@ -216,7 +216,7 @@ export default function Permissions() {
     if (!newUserEmail.trim()) return;
     setSaving("invite");
     try {
-      const data = await apiFetch(`/vaults/${vaultId}/members`, {
+      await apiFetch(`/vaults/${vaultId}/members`, {
         method: "POST",
         body: JSON.stringify({ email: newUserEmail.trim(), role: newUserRole, message: inviteMessage }),
       });
@@ -254,7 +254,6 @@ export default function Permissions() {
     const updated = {
       permissions: { ...member.permissions, [permKey]: !member.permissions[permKey] },
     };
-    // Optimistic update
     setMembers((ms) => ms.map((m) => m.id === member.id ? { ...m, ...updated } : m));
     try {
       await apiFetch(`/vaults/${vaultId}/members/${member.id}`, {
@@ -263,7 +262,7 @@ export default function Permissions() {
       });
     } catch (err) {
       toast(err.message, "error");
-      await loadData(); // revert
+      await loadData();
     }
   };
 
@@ -311,7 +310,7 @@ export default function Permissions() {
       });
     } catch (err) {
       toast(err.message, "error");
-      setSecurity(security); // revert
+      setSecurity(security);
     } finally {
       setSaving(null);
     }
@@ -458,13 +457,7 @@ export default function Permissions() {
                     </h2>
                     <div className="space-y-3">
 
-                      {/* Lock row — behaviour depends on whether vault has a password */}
                       {vaultInfo?.hasPassword ? (
-                        // ── Password vault: lock toggle is meaningful ──────────────
-                        // "Locked" = clear the ZK key from all active sessions so
-                        // everyone (including owner) must re-enter the vault password.
-                        // The server enforces this via the isLocked flag checked in
-                        // checkVaultAccess middleware.
                         <div className={`flex items-center justify-between gap-3 p-4 rounded-xl border ${isDark ? "bg-slate-900/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
                           <div className="flex items-center gap-3 min-w-0">
                             <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${security.isLocked ? (isDark ? "bg-amber-500/10" : "bg-amber-50") : (isDark ? "bg-emerald-500/10" : "bg-emerald-50")}`}>
@@ -496,11 +489,6 @@ export default function Permissions() {
                           </motion.button>
                         </div>
                       ) : (
-                        // ── Passwordless vault: locking is meaningless ─────────────
-                        // There is no passphrase to re-derive the key from, so
-                        // "locking" would just be clearing sessionStorage — which
-                        // solves nothing because any page refresh restores access.
-                        // Instead, show an honest info row and offer to set a password.
                         <div className={`flex items-start gap-3 p-4 rounded-xl border ${isDark ? "bg-slate-800/40 border-slate-700/40" : "bg-gray-50 border-gray-200"}`}>
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${isDark ? "bg-slate-700/60" : "bg-gray-100"}`}>
                             <Unlock className={`w-4 h-4 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
@@ -527,7 +515,7 @@ export default function Permissions() {
                         </div>
                       )}
 
-                      {/* Encryption row — always shown, reflects ZK status */}
+                      {/* Encryption row */}
                       <div className={`flex items-center justify-between gap-3 p-4 rounded-xl border ${isDark ? "bg-slate-900/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
                         <div className="flex items-center gap-3 min-w-0">
                           <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isDark ? "bg-emerald-500/10" : "bg-emerald-50"}`}>
@@ -807,8 +795,8 @@ export default function Permissions() {
                     </div>
                     <div className="space-y-3">
                       {[
-                        { key: "blockAllDownloads", Icon: Download, gradient: "from-violet-500 to-purple-600", title: "Block All Downloads", desc: "Prevent every user from downloading — overrides per-user settings" },
-                        { key: "deviceRestricted",  Icon: Smartphone, gradient: "from-cyan-500 to-teal-600", title: "Device Restrictions", desc: "Limit vault access to registered devices only" },
+                        { key: "blockAllDownloads", Icon: Download,    gradient: "from-violet-500 to-purple-600", title: "Block All Downloads", desc: "Prevent every user from downloading — overrides per-user settings" },
+                        { key: "deviceRestricted",  Icon: Smartphone,  gradient: "from-cyan-500 to-teal-600",     title: "Device Restrictions",  desc: "Limit vault access to registered devices only" },
                       ].map(({ key, Icon, gradient, title, desc }) => (
                         <div
                           key={key}
@@ -921,16 +909,7 @@ export default function Permissions() {
                       className={`w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all resize-none ${inputCls}`}
                     />
                   </div>
-                  <div className={`flex items-start gap-2.5 p-3 rounded-xl border ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
-                    <Download className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${isDark ? "text-gray-400" : "text-gray-500"}`} />
-                    <p className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-                      {newUserRole === "viewer"
-                        ? <><span className="font-semibold">Downloads restricted</span> by default for viewers.</>
-                        : <><span className="font-semibold">Downloads allowed</span> by default for editors.</>}
-                      {" "}You can change this after adding.
-                    </p>
-                  </div>
-                  {/* ZK notice */}
+                  {/* ZK notice — only about encryption, not downloads */}
                   <div className={`flex items-start gap-2.5 p-3 rounded-xl border ${isDark ? "bg-amber-500/10 border-amber-500/20" : "bg-amber-50 border-amber-200"}`}>
                     <AlertTriangle className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${isDark ? "text-amber-400" : "text-amber-600"}`} />
                     <p className={`text-xs ${isDark ? "text-amber-300" : "text-amber-700"}`}>
