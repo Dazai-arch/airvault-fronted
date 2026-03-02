@@ -13,7 +13,7 @@ import AirDrop from "./pages/AirDrop"
 import AccessLog from "./pages/AccessLog";
 import FileUpload from "./pages/FileUpload";
 import Permissions from "./pages/Permissions";
-import FileSharing from "./pages/FileSharing";  
+import VaultSharing from "./pages/VaultSharing";  
 import UserProfile from "./pages/UserProfile";
 import Details from "./pages/Details";
 import FileView from "./pages/FileView";
@@ -144,8 +144,8 @@ function App() {
             />
 
             <Route 
-              path="/vault/filesharing" 
-              element={<ProtectedRoute><FileSharing /></ProtectedRoute>} 
+              path="/vault/vaultsharing" 
+              element={<ProtectedRoute><VaultSharing /></ProtectedRoute>} 
             />
 
             <Route 

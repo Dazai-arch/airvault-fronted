@@ -104,7 +104,7 @@ const HamburgerMenu = () => {
     {
       id: "sharing", label: "Sharing",
       icon: <Share2 className="w-[18px] h-[18px]" />, iconColor: "text-teal-400",
-      action: () => go("/vault/filesharing"),
+      action: () => go("/vault/vaultsharing"),
     },
     {
       id: "details", label: "Details",
