@@ -780,15 +780,17 @@ const VaultDashboard = () => {
   ).sort((a, b) => b[1] - a[1]);
 
   const weeklyUploads = (() => {
-    if (!stats?.recentActivity) return [2, 5, 3, 8, 4, 7, 5];
-    const days = new Array(7).fill(0);
-    const now = Date.now();
-    stats.recentActivity.forEach(a => {
+  if (!stats?.recentActivity) return [2, 5, 3, 8, 4, 7, 5];
+  const days = new Array(7).fill(0);
+  const now = Date.now();
+  stats.recentActivity
+    .filter(a => a.vaultId?.toString() === activeVault?.id?.toString())
+    .forEach(a => {
       const diff = Math.floor((now - new Date(a.timestamp).getTime()) / (1000 * 60 * 60 * 24));
       if (diff >= 0 && diff < 7) days[6 - diff]++;
     });
-    return days;
-  })();
+  return days;
+})();
 
   const statCards = [
     { label: "Total Files",  value: loadingStats ? "…" : (vaultStats?.fileCount ?? files.length),                                   Icon: FileText, color: "from-cyan-500 to-blue-600",     bar: Math.min(((vaultStats?.fileCount ?? files.length) / 20) * 100, 100) },
@@ -798,7 +800,10 @@ const VaultDashboard = () => {
     { label: "Total Views",  value: loadingStats ? "…" : (stats?.totals?.views ?? files.reduce((s, f) => s + (f.views || 0), 0)),   Icon: Eye,      color: "from-violet-500 to-purple-600", bar: 55 },
   ];
 
-  const activityFeed = (stats?.recentActivity || []).slice(0, 7).map((a, i) => ({
+  const activityFeed = (stats?.recentActivity || [])
+  .filter(a => a.vaultId?.toString() === activeVault?.id?.toString())
+  .slice(0, 7)
+  .map((a, i) => ({
     id: i + 1,
     action: a.type === "upload" ? "File uploaded" : a.label,
     file: a.label?.replace("Uploaded \"", "").replace("\"", "") || "—",

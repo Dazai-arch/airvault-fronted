@@ -567,10 +567,10 @@ export default function AccessLog() {
             <motion.div
               initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className={`rounded-2xl w-full max-w-md shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900/98 border-cyan-500/20" : "bg-white/98 border-cyan-500/30"}`}
+              className={`rounded-2xl w-full max-w-md shadow-2xl border overflow-hidden ${isDark ? "bg-slate-900/98 border-cyan-500/20" : "bg-white border-cyan-500/30"}`}
             >
               <div className="h-[2px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600" />
-              <div className="p-5 sm:p-6 bg-white">
+              <div className="p-5 sm:p-6">
                 <div className="flex items-center justify-between mb-5">
                   <div className="flex items-center gap-3">
                     {(() => {
@@ -593,7 +593,7 @@ export default function AccessLog() {
                 </div>
                 <div className={`space-y-3 rounded-xl p-4 border ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
                   {[
-                    { label: "File / Target", value: selectedLog.file || "—" },
+                    { label: "File / Target", value: selectedLog.file || selectedLog.action || "—" },
                     { label: "User",          value: selectedLog.user },
                     { label: "IP Address",    value: selectedLog.ip || "—",    mono: true },
                     { label: "Device",        value: selectedLog.device },

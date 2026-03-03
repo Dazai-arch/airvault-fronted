@@ -231,6 +231,7 @@ const auditLogSchema = new mongoose.Schema({
     ref: "User",
     required: false,
   },
+  vaultId: { type: mongoose.Schema.Types.ObjectId, ref: "Vault", required: false },
   email: { type: String, required: true },
   action: { type: String, required: true },
   ipAddress: String,
@@ -387,11 +388,12 @@ const getDeviceInfo = (req) => {
   return { device, browser, os };
 };
 
-const createAuditLog = async (userId, email, action, req, success = true) => {
+const createAuditLog = async (userId, email, action, req, success = true, vaultId = null) => {
   const { device, browser, os } = getDeviceInfo(req);
   const ipAddress = req.ip || req.connection.remoteAddress;
   await AuditLog.create({
     userId,
+    vaultId,
     email,
     action,
     ipAddress,
@@ -3174,6 +3176,7 @@ app.get("/api/dashboard/stats", authenticateToken, async (req, res) => {
     const recentActivity = recentFiles.map(f => ({
       type:        "upload",
       label:       `Uploaded "${f.originalName}"`,
+      vaultId:     f.vaultId,
       vaultName:   vaultNameMap[f.vaultId?.toString()] || "Unknown Vault",
       fileType:    categorizeMime(f.mimeType, f.originalName),
       sizeBytes:   f.size,
@@ -3579,7 +3582,7 @@ app.post("/api/vaults/:vaultId/members", authenticateToken, async (req, res) => 
       // Don't fail the request — share record is already created
     }
 
-    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Granted", req);
+    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Granted",   req, { name: share.email });
     await createAuditLog(req.user.userId, req.user.email, "VAULT_INVITE_SENT", req);
 
     res.status(201).json({
@@ -3716,7 +3719,7 @@ app.patch("/api/vaults/:vaultId/members/:memberId", authenticateToken, async (re
     share.updatedAt = new Date();
     await share.save();
 
-    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Granted", req);
+    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Granted",   req, { name: share.email });
 
     res.status(200).json({
       message: "Member updated",
@@ -3754,7 +3757,7 @@ app.delete("/api/vaults/:vaultId/members/:memberId", authenticateToken, async (r
     share.updatedAt = new Date();
     await share.save();
 
-    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Revoked", req);
+   await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Revoked",   req, { name: share.email });
 
     res.status(200).json({ message: "Member access revoked" });
   } catch (err) {
@@ -3806,7 +3809,7 @@ app.post("/api/vaults/accept-invite", authenticateToken, async (req, res) => {
     // Fetch vault info to return to client
     const vault = await Vault.findById(vaultId).select("name hasPassword passwordHint");
 
-    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Vault Accessed", req);
+    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Vault Accessed",   req, { name: "Vault unlocked" });
 
     res.status(200).json({
       message:    "Invitation accepted! You now have access to the vault.",
@@ -3906,7 +3909,7 @@ app.patch("/api/vaults/:vaultId/security", authenticateToken, async (req, res) =
       { upsert: true, new: true }
     );
 
-    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req, { name: "Settings changed" });
 
     res.status(200).json({
       message:  "Security settings updated",
@@ -4038,7 +4041,7 @@ app.get("/api/vaults/:vaultId/access-log", authenticateToken, checkVaultAccess("
       logs: logs.map((l) => ({
         id:        l._id,
         action:    l.action,
-        file:      l.fileName || "—",
+        file:      l.fileName || l.action || "—",
         user:      l.email === req.user.email ? "You" : (l.email || "System"),
         ip:        l.ipAddress  || "—",
         device:    l.device     || "Unknown",
@@ -4368,7 +4371,7 @@ app.post("/api/vaults/join/:vaultId", authenticateToken, async (req, res) => {
     }
 
     // "Access Granted" matches ACTION_CONFIG in AccessLog.jsx
-    await createVaultAuditLog(vaultId, req.user.userId, user.email, "Access Granted", req);
+    await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Access Granted",   req, { name: share.email });
 
     res.status(201).json({
       message: `You've successfully joined "${vault.name}"!`,
@@ -4410,7 +4413,7 @@ app.patch("/api/vaults/:vaultId/password", authenticateToken, async (req, res) =
       }
 
       await createAuditLog(req.user.userId, req.user.email, "VAULT_PASSWORD_SET", req);
-      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req, { name: "Settings changed" });
       return res.status(200).json({ message: "Vault password set successfully", hasPassword: true });
     }
 
@@ -4434,7 +4437,7 @@ app.patch("/api/vaults/:vaultId/password", authenticateToken, async (req, res) =
       }
 
       await createAuditLog(req.user.userId, req.user.email, "VAULT_PASSWORD_CHANGED", req);
-      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req, { name: "Settings changed" });
       return res.status(200).json({ message: "Password changed successfully", hasPassword: true });
     }
 
@@ -4456,7 +4459,7 @@ app.patch("/api/vaults/:vaultId/password", authenticateToken, async (req, res) =
       await ZKSalt.deleteOne({ vaultId });
 
       await createAuditLog(req.user.userId, req.user.email, "VAULT_PASSWORD_REMOVED", req);
-      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req);
+      await createVaultAuditLog(vaultId, req.user.userId, req.user.email, "Security Updated", req, { name: "Settings changed" });
       return res.status(200).json({ message: "Password removed successfully", hasPassword: false });
     }
 
