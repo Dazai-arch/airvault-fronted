@@ -1983,7 +1983,7 @@ const isShareableFile = (fileName = "") =>
 
 // ─── Email template ───────────────────────────────────────────────────────────
 // Clean, table-based layout that works in all email clients (Gmail, Outlook, Apple Mail).
-const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSizeLabel, message, isEncrypted }) => `
+const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSizeLabel, message, isEncrypted, shareLink }) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2081,30 +2081,41 @@ const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSize
                 </tr>
               </table>
 
-              <!-- Attachment notice -->
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:14px;margin-bottom:${message ? "24px" : "0"};">
+              <!-- Share link button -->
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:${message ? "24px" : "0"};">
   <tr>
-    <td style="padding:18px 22px;">
-      <table cellpadding="0" cellspacing="0" border="0">
+    <td style="text-align:center;padding:8px 0 24px;">
+      <a href="${shareLink}" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg,#06b6d4,#3b82f6);color:#ffffff;text-decoration:none;border-radius:14px;font-weight:700;font-size:15px;letter-spacing:0.3px;">
+        ${isEncrypted ? "🔒 View Encrypted File →" : "📄 View File →"}
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:rgba(6,182,212,0.06);border:1px solid rgba(6,182,212,0.2);border-radius:12px;">
         <tr>
-          <td style="font-size:22px;padding-right:14px;vertical-align:middle;">
-            ${isEncrypted ? "🔐" : "📎"}
-          </td>
-          <td valign="middle">
-            <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:${isEncrypted ? "#f59e0b" : "#06b6d4"};">
-              ${isEncrypted ? "Encrypted file — requires AirVault to open" : "File attached to this email"}
-            </p>
-            <p style="margin:0;font-size:13px;color:#64748b;line-height:1.6;">
-              ${isEncrypted 
-                ? "This file is end-to-end encrypted. To open it, the sender must share access with you through AirVault directly. The attachment cannot be opened without the encryption key."
-                : "The file is attached below. Open or save it directly from your email client."
-              }
-            </p>
+          <td style="padding:14px 18px;">
+            <p style="margin:0 0 6px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#334155;">Share Link</p>
+            <a href="${shareLink}" style="font-size:12px;color:#06b6d4;word-break:break-all;text-decoration:none;">${shareLink}</a>
           </td>
         </tr>
       </table>
     </td>
   </tr>
+  ${isEncrypted ? `
+  <tr>
+    <td style="padding-top:14px;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:rgba(245,158,11,0.06);border:1px solid rgba(245,158,11,0.2);border-radius:12px;">
+        <tr>
+          <td style="padding:14px 18px;">
+            <p style="margin:0;font-size:12px;color:#92400e;line-height:1.6;">
+              🔐 <strong style="color:#f59e0b;">Encrypted file</strong> — you will need the vault password to view this file. Ask the sender for the password.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>` : ""}
 </table>
 
               <!-- Personal message -->
@@ -2241,9 +2252,11 @@ fileBuffer = Buffer.from(await resp.arrayBuffer());
         fileSizeLabel,
         message:     message || "",
         isEncrypted: file.isEncrypted ?? false,
+        shareLink,
       });
 
       // ── Send to each recipient ───────────────────────────────────────────────
+      const shareLink = req.body.shareLink || `https://airvault.me/share/${fileId}`;
       const sendResults = [];
       for (const recipient of recipients) {
         try {
@@ -2252,12 +2265,6 @@ fileBuffer = Buffer.from(await resp.arrayBuffer());
             to:      recipient,
             subject: `${senderName} shared "${file.originalName}" with you`,
             html:    htmlBody,
-            attachments: [
-              {
-                filename: file.originalName,
-                content:  fileBuffer,           // Buffer — Resend accepts Buffer directly
-              },
-            ],
           });
           if (error) sendResults.push({ email: recipient, ok: false, error: error.message });
           else       sendResults.push({ email: recipient, ok: true });
@@ -2290,6 +2297,119 @@ fileBuffer = Buffer.from(await resp.arrayBuffer());
     }
   }
 );
+
+// ── PUBLIC SHARE ENDPOINT (no auth required) ─────────────────────────────────
+app.get("/api/share/:fileId", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(fileId)) {
+      return res.status(400).json({ message: "Invalid file ID" });
+    }
+
+    const file = await VaultFile.findOne({ _id: fileId, isDeleted: false });
+    if (!file) return res.status(404).json({ message: "File not found or link has expired" });
+
+    // Only allow files that have been explicitly shared
+    if (!file.shared) {
+      return res.status(403).json({ message: "This file is not publicly shared" });
+    }
+
+    // Return file metadata (no bytes yet — client requests stream separately)
+    res.status(200).json({
+      id:          file._id,
+      name:        file.originalName,
+      mimeType:    file.mimeType,
+      size:        file.size,
+      isEncrypted: file.isEncrypted,
+      uploadedAt:  file.uploadedAt,
+    });
+  } catch (err) {
+    console.error("Public share metadata error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ── PUBLIC SHARE STREAM (no auth required) ────────────────────────────────────
+app.get("/api/share/:fileId/stream", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+
+    const file = await VaultFile.findOne({ _id: fileId, isDeleted: false });
+    if (!file) return res.status(404).json({ message: "File not found" });
+
+    if (!file.shared) {
+      return res.status(403).json({ message: "This file is not publicly shared" });
+    }
+
+    // Increment views
+    await VaultFile.findByIdAndUpdate(fileId, { $inc: { views: 1 } });
+
+    if (isLocal) {
+      const filePath = path.join(__dirname, "uploads/r2mock", file.storedKey);
+      if (!fs.existsSync(filePath)) return res.status(404).json({ message: "File not found on disk" });
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      return res.sendFile(path.resolve(filePath));
+    } else {
+      const { GetObjectCommand } = require("@aws-sdk/client-s3");
+      const s3Response = await r2Client.send(new GetObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: file.storedKey,
+      }));
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      if (s3Response.ContentLength) res.setHeader("Content-Length", s3Response.ContentLength);
+      s3Response.Body.pipe(res);
+    }
+  } catch (err) {
+    console.error("Public share stream error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.patch("/api/vaults/:vaultId/files/:fileId/mark-shared", authenticateToken, async (req, res) => {
+  try {
+    const { vaultId, fileId } = req.params;
+    await VaultFile.findOneAndUpdate(
+      { _id: fileId, vaultId, userId: req.user.userId, isDeleted: false },
+      { shared: true }
+    );
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+app.get("/api/share/:fileId/key-info", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const file = await VaultFile.findOne({ _id: fileId, isDeleted: false, shared: true });
+    if (!file) return res.status(404).json({ message: "File not found" });
+
+    const vault = await Vault.findOne({ _id: file.vaultId, isActive: true });
+    if (!vault) return res.status(404).json({ message: "Vault not found" });
+
+    const zkRecord = await ZKSalt.findOne({ vaultId: file.vaultId });
+
+    if (!vault.hasPassword) {
+      // Passwordless — return the raw key directly
+      return res.status(200).json({
+        requiresPassword: false,
+        keyHex: zkRecord?.saltB64 || null,
+      });
+    } else {
+      // Password vault — return salt only, key must be derived client-side
+      return res.status(200).json({
+        requiresPassword: true,
+        saltB64: zkRecord?.saltB64 || null,
+      });
+    }
+  } catch (err) {
+    console.error("Share key-info error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 const folderToJSON = (f) => ({
   id:         f.folderId,

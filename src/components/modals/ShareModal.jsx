@@ -65,7 +65,7 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
   const inputRef = useRef(null);
 
   const shareCheck = checkShareable(file?.name, file?.mimeType);
-  const shareLink  = `https://airvault.me/s/${file?.id}`;
+  const shareLink = `https://airvault.me/share/${file?.id}`;
 
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 80);
@@ -97,36 +97,61 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
     if (e.key === "Backspace" && !inputVal && emails.length) removeEmail(emails[emails.length - 1]);
   };
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(shareLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const handleCopyLink = async () => {
+  // Mark file as shared on the server
+  const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+  await fetch(`${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/mark-shared`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
+  }).catch(() => {}); // fire and forget
+
+  navigator.clipboard.writeText(shareLink);
+  setCopied(true);
+  setTimeout(() => setCopied(false), 2000);
+};
 
   const handleSend = async () => {
-    if (!emails.length) { setInputError("Add at least one recipient"); return; }
-    setSending(true);
-    setApiError("");
-    try {
-      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-      const res = await fetch(
-        `${apiBaseUrl || "http://localhost:5000/api"}/vaults/${vaultId}/files/${file.id}/share`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          credentials: "include",
-          body: JSON.stringify({ recipients: emails, message, fileName: file.name }),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to share file");
-      setSent(true);
-    } catch (e) {
-      setApiError(e.message);
-    } finally {
-      setSending(false);
-    }
-  };
+  if (!emails.length) { setInputError("Add at least one recipient"); return; }
+  setSending(true);
+  setApiError("");
+  try {
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+
+    // 1. Mark file as shared so the public link works
+    await fetch(
+      `${apiBaseUrl || "http://localhost:5000/api"}/vaults/${vaultId}/files/${file.id}/mark-shared`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      }
+    );
+
+    // 2. Send email with share link (not the encrypted blob attachment)
+    const res = await fetch(
+      `${apiBaseUrl || "http://localhost:5000/api"}/vaults/${vaultId}/files/${file.id}/share`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({
+          recipients: emails,
+          message,
+          fileName: file.name,
+          shareLink,  // ← pass the link so backend includes it in the email
+        }),
+      }
+    );
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to share file");
+    setSent(true);
+  } catch (e) {
+    setApiError(e.message);
+  } finally {
+    setSending(false);
+  }
+};
 
   // ── styles
   const bg      = isDark ? "bg-slate-900"       : "bg-white";
