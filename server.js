@@ -1857,24 +1857,21 @@ await createVaultAuditLog(
         return res.sendFile(path.resolve(filePath));
 
       } else {
-  // Production — presigned R2 URL (browser fetches directly, no proxy/CORS issues)
   const { GetObjectCommand } = require("@aws-sdk/client-s3");
-  const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
-  const cmd = new GetObjectCommand({
+  const s3Response = await r2Client.send(new GetObjectCommand({
     Bucket: process.env.R2_BUCKET_NAME,
     Key: file.storedKey,
-  });
+  }));
 
-  const presignedUrl = await getSignedUrl(r2Client, cmd, { expiresIn: 300 });
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", "attachment");
+  res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "*");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  if (s3Response.ContentLength) res.setHeader("Content-Length", s3Response.ContentLength);
 
-  return res.status(200).json({
-    downloadUrl:  presignedUrl,
-    originalName: file.originalName,
-    mimeType:     file.mimeType,
-    isEncrypted:  file.isEncrypted || false,
-  });
-      }
+  s3Response.Body.pipe(res);
+}
 
     } catch (error) {
       console.error("Download File Error:", error);

@@ -633,24 +633,14 @@ export default function FilePreviewModal({
     
     const token = localStorage.getItem("token") || sessionStorage.getItem("token");
 
-    // 1. Get download URL
-    const dlRes = await fetch(
-      `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/download`,
-      { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
-    );
-    //console.log("dlRes status:", dlRes.status);
-    const dlData = await dlRes.json();
-    //console.log("dlData:", dlData);
+// Single request — backend now streams encrypted bytes directly
+const fileRes = await fetch(
+  `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/download`,
+  { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
+);
 
-    if (!dlRes.ok) throw new Error("Could not get download URL");
-    const { downloadUrl, localPath } = dlData;
-
-    // 2. Fetch raw bytes
-    const fileRes = await fetch(downloadUrl || localPath);
-    //console.log("fileRes status:", fileRes.status);
-    //console.log("fileRes ok:", fileRes.ok);
-    
-    const buf = await fileRes.arrayBuffer();
+if (!fileRes.ok) throw new Error("Could not fetch file from server");
+const buf = await fileRes.arrayBuffer();
     //console.log("buf byteLength:", buf.byteLength);
 
 const firstBytes = new Uint8Array(buf).slice(0, 8);
