@@ -224,9 +224,9 @@ const FileViewer = ({
           <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${isDark ? "bg-slate-900/40 border-slate-700/40" : "bg-gray-50 border-gray-100"}`}>
             <div className="min-w-0 flex-1">
               <p className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 ${isDark ? "text-gray-600" : "text-gray-400"}`}>Share Link</p>
-              <p className={`text-[10px] font-mono truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>${import.meta.env.VITE_API_URL || "http://localhost:5173"}/share/${file?.id}</p>
+              <p className={`text-[10px] font-mono truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>${import.meta.env.FRONTEND_URL || "http://localhost:5173"}/share/${file?.id}</p>
             </div>
-            <button onClick={() => onCopy(`${import.meta.env.VITE_API_URL || "http://localhost:5173"}/share/${file?.id}`)}
+            <button onClick={() => onCopy(`${import.meta.env.FRONTEND_URL || "http://localhost:5173"}/share/${file?.id}`)}
               className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all flex-shrink-0 ${
                 copied
                   ? isDark ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-600"

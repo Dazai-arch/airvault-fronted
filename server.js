@@ -2243,7 +2243,7 @@ fileBuffer = Buffer.from(await resp.arrayBuffer());
       }
 
       // ── Build email ──────────────────────────────────────────────────────────
-      const shareLink = req.body.shareLink || `${process.env.VITE_API_URL || "http://localhost:5173"}/share/${fileId}`;
+      const shareLink = req.body.shareLink || `${process.env.FRONTEND_URL || "http://localhost:5173"}/share/${fileId}`;
       const fileType      = getMimeLabel(file.mimeType, file.originalName);
       const fileSizeLabel = formatBytes(file.size);
       const htmlBody      = buildShareEmail({
