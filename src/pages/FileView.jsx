@@ -13,7 +13,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useVault } from "../context/VaultContext";
 import VaultTopBar from "../components/layout/VaultTopBar";
 import HamburgerMenu from "../components/layout/HamburgerMenu";
-import vaultApi, { unlockVaultKey, getVaultKey } from "../services/vaultApi";
+import vaultApi, { restoreVaultKey, getVaultKey } from "../services/vaultApi";
 import ShareModal from "../components/modals/ShareModal";
 import FilePreviewModal from "../components/modals/FilePreviewModal";
 
