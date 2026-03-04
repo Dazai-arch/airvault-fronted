@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Lock, Loader2, AlertCircle, Download, Shield } from "lucide-react";
 import { decryptToBlob } from "../services/ZKcrypto";
-import FilePreviewModal from "../components/vault/FilePreviewModal";
+import FilePreviewModal from "../components/modals/FilePreviewModal";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 

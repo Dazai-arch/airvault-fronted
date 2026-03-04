@@ -3281,12 +3281,16 @@ app.get("/api/dashboard/stats", authenticateToken, async (req, res) => {
 
     // ── 5. Recent activity (last 10 file uploads across vaults) ─
     const recentFiles = await VaultFile.find(
-      { userId: new mongoose.Types.ObjectId(userId), isDeleted: false },
-      { originalName: 1, mimeType: 1, size: 1, uploadedAt: 1, isEncrypted: 1, vaultId: 1 }
-    )
-      .sort({ uploadedAt: -1 })
-      .limit(10)
-      .lean();
+  { 
+    userId: new mongoose.Types.ObjectId(userId), 
+    isDeleted: false,
+    uploadedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } // last 7 days
+  },
+  { originalName: 1, mimeType: 1, size: 1, uploadedAt: 1, isEncrypted: 1, vaultId: 1 }
+)
+  .sort({ uploadedAt: -1 })
+  .limit(500)  // enough to cover all vaults for 7 days
+  .lean();
 
     // build a quick vault name map
     const vaultNameMap = Object.fromEntries(vaults.map(v => [v._id.toString(), v.name]));

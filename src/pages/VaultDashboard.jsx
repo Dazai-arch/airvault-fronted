@@ -780,13 +780,15 @@ const VaultDashboard = () => {
   ).sort((a, b) => b[1] - a[1]);
 
   const weeklyUploads = (() => {
-  if (!stats?.recentActivity) return [2, 5, 3, 8, 4, 7, 5];
+  if (!stats?.recentActivity) return [0, 0, 0, 0, 0, 0, 0];
   const days = new Array(7).fill(0);
-  const now = Date.now();
+  const now = new Date();
+  now.setHours(23, 59, 59, 999); // end of today
+  
   stats.recentActivity
     .filter(a => a.vaultId?.toString() === activeVault?.id?.toString())
     .forEach(a => {
-      const diff = Math.floor((now - new Date(a.timestamp).getTime()) / (1000 * 60 * 60 * 24));
+      const diff = Math.floor((now - new Date(a.timestamp)) / (1000 * 60 * 60 * 24));
       if (diff >= 0 && diff < 7) days[6 - diff]++;
     });
   return days;
