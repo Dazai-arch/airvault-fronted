@@ -68,6 +68,15 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
   const shareLink = `${import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}`;
 
   useEffect(() => {
+  if (!file?.id) return;
+  const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+  fetch(`${import.meta.env.VITE_API_URL}/vaults/${vaultId}/files/${file.id}/mark-shared`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(console.error);
+}, [file?.id]);
+
+  useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 80);
     return () => clearTimeout(t);
   }, []);
@@ -98,17 +107,20 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
   };
 
   const handleCopyLink = async () => {
-  // Mark file as shared on the server
-  const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-  await fetch(`${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/mark-shared`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}` },
-    credentials: "include",
-  }).catch(() => {}); // fire and forget
-
   navigator.clipboard.writeText(shareLink);
   setCopied(true);
   setTimeout(() => setCopied(false), 2000);
+
+  // Mark file as shared so the public endpoint allows access
+  try {
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+    await fetch(`${import.meta.env.VITE_API_URL}/vaults/${vaultId}/files/${file.id}/mark-shared`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    console.error("Failed to mark file as shared:", e);
+  }
 };
 
   const handleSend = async () => {
