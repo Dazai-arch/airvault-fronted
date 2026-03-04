@@ -2311,10 +2311,7 @@ app.get("/api/share/:fileId", async (req, res) => {
     const file = await VaultFile.findOne({ _id: fileId, isDeleted: false });
     if (!file) return res.status(404).json({ message: "File not found or link has expired" });
 
-    // Only allow files that have been explicitly shared
-    if (!file.shared) {
-      return res.status(403).json({ message: "This file is not publicly shared" });
-    }
+   
 
     // Return file metadata (no bytes yet — client requests stream separately)
     res.status(200).json({
@@ -2339,9 +2336,7 @@ app.get("/api/share/:fileId/stream", async (req, res) => {
     const file = await VaultFile.findOne({ _id: fileId, isDeleted: false });
     if (!file) return res.status(404).json({ message: "File not found" });
 
-    if (!file.shared) {
-      return res.status(403).json({ message: "This file is not publicly shared" });
-    }
+    
 
     // Increment views
     await VaultFile.findByIdAndUpdate(fileId, { $inc: { views: 1 } });
