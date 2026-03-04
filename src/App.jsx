@@ -19,7 +19,7 @@ import Details from "./pages/Details";
 import FileView from "./pages/FileView";
 import VaultSettings from "./pages/VaultSettings";
 import FolderView from "./pages/FolderView";
-// ✅ NEW: Vault join page (for link/QR/vault ID sharing)
+import SharePage from "./pages/SharePage";
 import VaultJoinPage from "./pages/VaultJoinPage";
 
 // Enhanced Protected Route Component with Token Validation
@@ -106,6 +106,7 @@ function App() {
             <Route path="/airdrop" element={<AirDrop />} />
             <Route path="/auth" element={<AuthPage />} />
 
+            <Route path="/share/:fileId" element={<SharePage />} />
             {/* ✅ Public vault join route — no auth required, handles it internally */}
             <Route path="/vault/join/:vaultId" element={<VaultJoinPage />} />
 
