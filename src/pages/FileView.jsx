@@ -530,11 +530,25 @@ const FileView = () => {
     }
   }, []);
 
-  const handleCopy = useCallback((text) => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, []);
+  const handleCopy = useCallback(async (text) => {
+  navigator.clipboard.writeText(text);
+  setCopied(true);
+  setTimeout(() => setCopied(false), 2000);
+
+  // Mark file as shared so the public share link works
+  if (selectedFile?.id) {
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/vaults/${vaultId}/files/${selectedFile.id}/mark-shared`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      handleShareSuccess(selectedFile.id);
+    } catch (e) {
+      console.error("Failed to mark file as shared:", e);
+    }
+  }
+}, [selectedFile?.id, vaultId, handleShareSuccess]);
 
   // ── after share success: mark file as shared in local state ──
   const handleShareSuccess = useCallback((fileId) => {
