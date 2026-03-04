@@ -65,7 +65,7 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
   const inputRef = useRef(null);
 
   const shareCheck = checkShareable(file?.name, file?.mimeType);
-  const shareLink = `https://airvault.me/share/${file?.id}`;
+  const shareLink = `${import.meta.env.VITE_API_URL || "http://localhost:5173"}/share/${file?.id}`;
 
   useEffect(() => {
     const t = setTimeout(() => inputRef.current?.focus(), 80);
