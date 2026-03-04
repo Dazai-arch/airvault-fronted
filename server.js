@@ -2380,7 +2380,7 @@ app.patch("/api/vaults/:vaultId/files/:fileId/mark-shared", authenticateToken, a
 app.get("/api/share/:fileId/key-info", async (req, res) => {
   try {
     const { fileId } = req.params;
-    const file = await VaultFile.findOne({ _id: fileId, isDeleted: false, shared: true });
+    const file = await VaultFile.findOne({ _id: fileId, isDeleted: false });
     if (!file) return res.status(404).json({ message: "File not found" });
 
     const vault = await Vault.findOne({ _id: file.vaultId, isActive: true });
