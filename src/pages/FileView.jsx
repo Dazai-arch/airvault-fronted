@@ -1061,6 +1061,7 @@ const FileView = () => {
 
       {/* ── Share Modal ── */}
       <AnimatePresence>
+        {console.log("ShareModal vaultId:", vaultId, "activeVault:", activeVault)}
         {shareFile && (
           <ShareModal
             key={shareFile.id}
