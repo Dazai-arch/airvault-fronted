@@ -530,6 +530,12 @@ const FileView = () => {
     }
   }, []);
 
+  // ── after share success: mark file as shared in local state ──
+  const handleShareSuccess = useCallback((fileId) => {
+    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, shared: true } : f));
+    setSelectedFile(prev => prev?.id === fileId ? { ...prev, shared: true } : prev);
+  }, []);
+
   const handleCopy = useCallback(async (text) => {
   navigator.clipboard.writeText(text);
   setCopied(true);
@@ -549,12 +555,6 @@ const FileView = () => {
     }
   }
 }, [selectedFile?.id, vaultId, handleShareSuccess]);
-
-  // ── after share success: mark file as shared in local state ──
-  const handleShareSuccess = useCallback((fileId) => {
-    setFiles(prev => prev.map(f => f.id === fileId ? { ...f, shared: true } : f));
-    setSelectedFile(prev => prev?.id === fileId ? { ...prev, shared: true } : prev);
-  }, []);
 
   // ── derived ────────────────────────────────────────────────
   const allTypes = useMemo(() => ["All", ...Array.from(new Set(files.map(f => f.type))).sort()], [files]);
