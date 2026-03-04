@@ -68,20 +68,23 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
   const shareLink = `${import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}`;
 
   useEffect(() => {
+  console.log("ShareModal useEffect fired:", { fileId: file?.id, vaultId, apiBaseUrl });
   if (!file?.id || !vaultId) {
-    console.log("mark-shared skipped:", { fileId: file?.id, vaultId });
+    console.log("Skipping - missing fileId or vaultId");
     return;
   }
-  console.log("mark-shared firing for:", file.id, "vault:", vaultId);
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-  fetch(`${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/mark-shared`, {
+  console.log("Token exists:", !!token);
+  const url = `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/mark-shared`;
+  console.log("Fetching:", url);
+  fetch(url, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },
     credentials: "include",
   })
-  .then(r => r.json())
-  .then(d => console.log("mark-shared result:", d))
-  .catch(console.error);
+  .then(r => { console.log("mark-shared status:", r.status); return r.json(); })
+  .then(d => console.log("mark-shared response:", d))
+  .catch(e => console.error("mark-shared error:", e));
 }, [file?.id, vaultId]);
 
   useEffect(() => {
