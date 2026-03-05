@@ -425,6 +425,94 @@ const authenticateToken = (req, res, next) => {
   );
 };
 
+const checkVaultAccess = (requiredRole = "viewer") => async (req, res, next) => {
+  try {
+    const { vaultId } = req.params;
+    const userId = req.user.userId;
+
+    const vault = await Vault.findOne({ _id: vaultId, isActive: true });
+    if (!vault) return res.status(404).json({ message: "Vault not found" });
+
+    // ── isLocked enforcement ───────────────────────────────────────────────
+    // Only meaningful for password vaults. Passwordless vaults have no
+    // passphrase to re-authenticate against, so isLocked is never set on them.
+    // The owner is always let through so they can unlock the vault again.
+    if (vault.hasPassword && vault.userId.toString() !== userId) {
+      const sec = await VaultSecurity.findOne({ vaultId });
+      if (sec?.isLocked) {
+        await createVaultAuditLog(vaultId, userId, req.user?.email, "Unauthorized Access", req, null, "blocked");
+        return res.status(423).json({
+          message: "This vault is locked. Contact the vault owner to unlock it.",
+          code: "VAULT_LOCKED",
+        });
+      }
+    }
+
+    // Owner always has full access
+    if (vault.userId.toString() === userId) {
+      req.vaultRole = "owner";
+      req.vault = vault;
+      req.isOwner = true;
+      return next();
+    }
+
+    // Check shared access
+    const user = await User.findById(userId).select("email");
+const share = await VaultShare.findOne({
+  vaultId,
+  status: "active",
+  $or: [{ userId }, { email: user.email }],
+});
+
+    if (!share) {
+      await createVaultAuditLog(vaultId, userId, req.user.email, "Unauthorized Access", req, null, "blocked");
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const rolePriority = { owner: 3, editor: 2, viewer: 1 };
+    if ((rolePriority[share.role] || 0) < (rolePriority[requiredRole] || 1)) {
+      return res.status(403).json({ message: `Requires ${requiredRole} access or higher` });
+    }
+
+    req.vaultRole  = share.role;
+    req.vaultShare = share;
+    req.vault      = vault;
+    req.isOwner    = false;
+    next();
+  } catch (err) {
+    console.error("checkVaultAccess:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// Check a specific permission flag (e.g. "upload", "delete", "share")
+const checkPermission = (perm) => (req, res, next) => {
+  if (req.isOwner) return next(); // owner bypasses all
+  if (!req.vaultShare?.permissions?.[perm]) {
+    return res.status(403).json({ message: `You don't have ${perm} permission for this vault` });
+  }
+  next();
+};
+
+// Check download permission (respects vault-wide block too)
+const checkDownloadPermission = async (req, res, next) => {
+  try {
+    if (req.isOwner) return next();
+
+    // Vault-wide security check
+    const security = await VaultSecurity.findOne({ vaultId: req.params.vaultId });
+    if (security?.blockAllDownloads) {
+      return res.status(403).json({ message: "Downloads are disabled for this vault" });
+    }
+
+    if (!req.vaultShare?.canDownload) {
+      return res.status(403).json({ message: "You don't have download permission for this vault" });
+    }
+    next();
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+};
 
 // ====================================
 // API ROUTES
@@ -3596,102 +3684,6 @@ const vaultAuditSchema = new mongoose.Schema({
 });
 vaultAuditSchema.index({ vaultId: 1, timestamp: -1 });
 const VaultAuditLog = mongoose.model("VaultAuditLog", vaultAuditSchema);
-
-
-// ════════════════════════════════════════════════════════════
-// MIDDLEWARE — vault access check (RBAC)
-// Usage: checkVaultAccess("viewer") or checkVaultAccess("editor") or checkVaultAccess("owner")
-// ════════════════════════════════════════════════════════════
-
-const checkVaultAccess = (requiredRole = "viewer") => async (req, res, next) => {
-  try {
-    const { vaultId } = req.params;
-    const userId = req.user.userId;
-
-    const vault = await Vault.findOne({ _id: vaultId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    // ── isLocked enforcement ───────────────────────────────────────────────
-    // Only meaningful for password vaults. Passwordless vaults have no
-    // passphrase to re-authenticate against, so isLocked is never set on them.
-    // The owner is always let through so they can unlock the vault again.
-    if (vault.hasPassword && vault.userId.toString() !== userId) {
-      const sec = await VaultSecurity.findOne({ vaultId });
-      if (sec?.isLocked) {
-        await createVaultAuditLog(vaultId, userId, req.user?.email, "Unauthorized Access", req, null, "blocked");
-        return res.status(423).json({
-          message: "This vault is locked. Contact the vault owner to unlock it.",
-          code: "VAULT_LOCKED",
-        });
-      }
-    }
-
-    // Owner always has full access
-    if (vault.userId.toString() === userId) {
-      req.vaultRole = "owner";
-      req.vault = vault;
-      req.isOwner = true;
-      return next();
-    }
-
-    // Check shared access
-    const user = await User.findById(userId).select("email");
-const share = await VaultShare.findOne({
-  vaultId,
-  status: "active",
-  $or: [{ userId }, { email: user.email }],
-});
-
-    if (!share) {
-      await createVaultAuditLog(vaultId, userId, req.user.email, "Unauthorized Access", req, null, "blocked");
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    const rolePriority = { owner: 3, editor: 2, viewer: 1 };
-    if ((rolePriority[share.role] || 0) < (rolePriority[requiredRole] || 1)) {
-      return res.status(403).json({ message: `Requires ${requiredRole} access or higher` });
-    }
-
-    req.vaultRole  = share.role;
-    req.vaultShare = share;
-    req.vault      = vault;
-    req.isOwner    = false;
-    next();
-  } catch (err) {
-    console.error("checkVaultAccess:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
-// Check a specific permission flag (e.g. "upload", "delete", "share")
-const checkPermission = (perm) => (req, res, next) => {
-  if (req.isOwner) return next(); // owner bypasses all
-  if (!req.vaultShare?.permissions?.[perm]) {
-    return res.status(403).json({ message: `You don't have ${perm} permission for this vault` });
-  }
-  next();
-};
-
-// Check download permission (respects vault-wide block too)
-const checkDownloadPermission = async (req, res, next) => {
-  try {
-    if (req.isOwner) return next();
-
-    // Vault-wide security check
-    const security = await VaultSecurity.findOne({ vaultId: req.params.vaultId });
-    if (security?.blockAllDownloads) {
-      return res.status(403).json({ message: "Downloads are disabled for this vault" });
-    }
-
-    if (!req.vaultShare?.canDownload) {
-      return res.status(403).json({ message: "You don't have download permission for this vault" });
-    }
-    next();
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
-};
-
 
 // ════════════════════════════════════════════════════════════
 // HELPER — vault-scoped audit log creator
