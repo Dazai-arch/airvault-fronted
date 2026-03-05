@@ -648,6 +648,7 @@ const VaultDashboard = () => {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
 
   const [files,        setFiles]        = useState([]);
+  const [isOwner,      setIsOwner]      = useState(false); // only owners see share/QR/permissions
   const [alerts,       setAlerts]       = useState([]);
   const [stats,        setStats]        = useState(null);
   const [loadingFiles, setLoadingFiles] = useState(true);
@@ -735,7 +736,17 @@ const VaultDashboard = () => {
   }, [activeVault?.id]);
 
   useEffect(() => {
-    if (activeVault?.id) { fetchFiles(); fetchStats(); fetchAlerts(); }
+    if (activeVault?.id) {
+      fetchFiles(); fetchStats(); fetchAlerts();
+      // Fetch vault info to determine if current user is owner
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      fetch(`${API_BASE_URL}/vaults/${activeVault.id}`, {
+        headers: { Authorization: `Bearer ${token}` }, credentials: "include",
+      })
+        .then(r => r.json())
+        .then(data => { if (data?.vault) setIsOwner(!!data.vault.isOwner); })
+        .catch(() => {});
+    }
   }, [activeVault?.id, fetchFiles, fetchStats, fetchAlerts]);
 
   const getDefaultAlerts = () => [
@@ -1148,11 +1159,13 @@ const VaultDashboard = () => {
                                       className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${isDark ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"}`}>
                                       <FolderOpen className="w-3 h-3" /><span className="hidden sm:inline">Open</span>
                                     </button>
+                                    {isOwner && (
                                     <button onClick={() => handleDeleteFile(file.id)} disabled={deletingId === file.id}
                                       className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border disabled:opacity-50 ${isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"}`}>
                                       {deletingId === file.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
                                       <span className="hidden sm:inline">Delete</span>
                                     </button>
+                                    )}
                                   </div>
                                 </div>
                               </motion.div>
@@ -1208,10 +1221,12 @@ const VaultDashboard = () => {
                                 className={`p-1.5 sm:p-2 rounded-lg transition-all ${isDark ? "hover:bg-cyan-500/20 text-cyan-400" : "hover:bg-cyan-100 text-cyan-600"}`}>
                                 <FolderOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                               </button>
+                              {isOwner && (
                               <button onClick={() => handleDeleteFile(file.id)} disabled={deletingId === file.id}
                                 className={`p-1.5 sm:p-2 rounded-lg transition-all disabled:opacity-50 ${isDark ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-100 text-red-500"}`}>
                                 {deletingId === file.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                               </button>
+                              )}
                             </div>
                           </motion.div>
                         );
@@ -1226,6 +1241,7 @@ const VaultDashboard = () => {
                   )}
                 </motion.div>
 
+                {isOwner && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.44 }}
                   className={`${card} p-4 sm:p-6`}>
                   <h2 className={`text-sm sm:text-base font-bold mb-5 flex items-center gap-2.5 ${isDark ? "text-white" : "text-gray-900"}`}>
@@ -1256,6 +1272,7 @@ const VaultDashboard = () => {
                     ))}
                   </div>
                 </motion.div>
+                )}
               </div>
 
               <div className="xl:col-span-4">

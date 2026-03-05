@@ -212,6 +212,13 @@ export default function AccessLog() {
     return () => clearTimeout(t);
   }, [fetchLogs]);
 
+  // Auto-refresh every 30 seconds so stats (including uniqueUsers) stay current
+  useEffect(() => {
+    if (!vaultId) return;
+    const interval = setInterval(fetchLogs, 30_000);
+    return () => clearInterval(interval);
+  }, [fetchLogs, vaultId]);
+
   // Reset page on filter change
   useEffect(() => { setPage(1); }, [activeFilter, search]);
 

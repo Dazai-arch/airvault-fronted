@@ -62,18 +62,20 @@ const getFC = (type) => FILE_TYPE_CONFIG[type] || {
   bg: "bg-slate-500/10", border: "border-slate-500/20", text: "text-slate-400",
 };
 
-const MY_PERMS = { view: true, upload: true, edit: true, delete: true, share: true, canDownload: true };
+// Permissions are loaded dynamically from the server (see fetchVaultPermissions in FileView)
+const DEFAULT_VIEWER_PERMS = { view: true, upload: false, edit: false, delete: false, share: false, canDownload: false };
 
 /* ══════════════════════════════════════════════════════════
    FileViewer — OUTSIDE FileView so React never remounts it
    Props: file, onClose, onDelete, onDownload, onShare,
           onPreview, copied, onCopy, isDark, downloading,
-          deletingId
+          deletingId, userPerms
 ══════════════════════════════════════════════════════════ */
 const FileViewer = ({
   file, onClose, onDelete, onDownload, onShare, onPreview,
-  copied, onCopy, isDark, downloading, deletingId,
+  copied, onCopy, isDark, downloading, deletingId, userPerms,
 }) => {
+  const perms = userPerms || DEFAULT_VIEWER_PERMS;
   const ft    = getFC(file.type);
   const FIcon = ft.Icon;
   const isDel = deletingId === file.id;
@@ -120,7 +122,7 @@ const FileViewer = ({
                  file.type === "Code"    ? "Code Viewer" : "Document Preview"}
               </p>
               <p className={`text-[11px] mt-1 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-                {file.isEncrypted ? "🔒 Zero-knowledge encrypted" : (MY_PERMS.edit ? "Full access enabled" : "View only")}
+                {file.isEncrypted ? "🔒 Zero-knowledge encrypted" : (perms.edit ? "Full access enabled" : "View only")}
               </p>
             </div>
           </div>
@@ -143,7 +145,7 @@ const FileViewer = ({
             <Eye className="w-3.5 h-3.5" /> Open Full
           </button>
 
-          {MY_PERMS.canDownload && (
+          {perms.canDownload && (
             <button onClick={() => onDownload(file)} disabled={downloading}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold border transition-all disabled:opacity-60 disabled:cursor-wait ${isDark ? "bg-slate-700/50 border-slate-600/50 text-gray-300 hover:border-cyan-500/40 hover:text-white" : "bg-gray-100 border-gray-200 text-gray-700 hover:border-cyan-400"}`}>
               {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
@@ -152,7 +154,7 @@ const FileViewer = ({
           )}
 
           {/* Share — launches ShareModal */}
-          {MY_PERMS.share && (
+          {perms.share && (
             <button
               onClick={() => onShare(file)}
               className={`flex items-center justify-center p-2 rounded-xl border transition-all ${isDark ? "bg-slate-700/50 border-slate-600/50 text-gray-400 hover:border-blue-500/40 hover:text-blue-400" : "bg-gray-100 border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600"}`}>
@@ -203,7 +205,7 @@ const FileViewer = ({
           <p className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Security</p>
           {[
             { Icon: Key,         label: "Encryption",       value: file.isEncrypted ? "AES-GCM 256" : "None",        vColor: file.isEncrypted ? (isDark ? "text-emerald-400" : "text-emerald-600") : (isDark ? "text-red-400" : "text-red-500") },
-            { Icon: Lock,        label: "Permission",       value: MY_PERMS.edit ? "Edit access" : "Read-only",      vColor: MY_PERMS.edit ? (isDark ? "text-cyan-400" : "text-cyan-600") : (isDark ? "text-amber-400" : "text-amber-600") },
+            { Icon: Lock,        label: "Permission",       value: perms.edit ? "Edit access" : "Read-only",      vColor: perms.edit ? (isDark ? "text-cyan-400" : "text-cyan-600") : (isDark ? "text-amber-400" : "text-amber-600") },
             { Icon: CameraOff,   label: "Screen guard",     value: "Active",                                          vColor: isDark ? "text-emerald-400" : "text-emerald-600" },
             { Icon: Fingerprint, label: "Tamper detection", value: "Verified",                                        vColor: isDark ? "text-emerald-400" : "text-emerald-600" },
           ].map(({ Icon, label, value, vColor }) => (
@@ -254,7 +256,7 @@ const FileViewer = ({
             </span>
           </div>
 
-          {MY_PERMS.delete && (
+          {perms.delete && (
             <button onClick={() => onDelete(file.id)} disabled={isDel}
               className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-all disabled:opacity-60 disabled:cursor-wait ${isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20 hover:border-red-500/40" : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"}`}>
               {isDel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -357,6 +359,9 @@ const FileView = () => {
   const [shareFile,   setShareFile]   = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
 
+  // ── permissions (fetched from server — never hardcoded) ───
+  const [userPerms, setUserPerms] = useState(DEFAULT_VIEWER_PERMS);
+
   // ── vault unlock state ─────────────────────────────────────
   const [vaultUnlocked,   setVaultUnlocked]   = useState(false);
   const [vaultCryptoKey,  setVaultCryptoKey]  = useState(null); // actual CryptoKey to pass to modal
@@ -401,7 +406,28 @@ const FileView = () => {
   tryUnlock();
 }, [activeVault?.id]);
 
-  // Close type-filter dropdown when clicking outside
+  // ── fetch vault permissions for current user ───────────────
+  useEffect(() => {
+    if (!vaultId) return;
+    const fetchPerms = async () => {
+      try {
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/vaults/${vaultId}`,
+          { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
+        );
+        if (res.ok) {
+          const { vault } = await res.json();
+          if (vault?.userPermissions) setUserPerms(vault.userPermissions);
+        }
+      } catch (e) {
+        console.warn("FileView: could not fetch vault permissions:", e.message);
+      }
+    };
+    fetchPerms();
+  }, [vaultId]);
+
+
   useEffect(() => {
     if (!showFilter) return;
     const h = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setShowFilter(false); };
@@ -649,7 +675,7 @@ const FileView = () => {
                   className={`p-2.5 rounded-xl border transition-all ${isDark ? "bg-slate-800/50 border-slate-700/50 text-gray-400 hover:text-white hover:border-cyan-500/40" : "bg-white/80 border-gray-200 text-gray-500 hover:border-cyan-400"}`}>
                   <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                 </button>
-                {MY_PERMS.upload && (
+                {userPerms.upload && (
                   <button onClick={() => navigate("/vault/fileupload")}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 text-white shadow-lg shadow-cyan-500/30 hover:shadow-cyan-500/50 hover:scale-[1.02] transition-all duration-300">
                     <Upload className="w-4 h-4" /> Upload Files
@@ -928,21 +954,21 @@ const FileView = () => {
                                     : isDark ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"}`}>
                                   <Eye className="w-3 h-3" /> {isSel ? "Close" : "View"}
                                 </button>
-                                {MY_PERMS.canDownload && (
+                                {perms.canDownload && (
                                   <button onClick={() => handleDownload(file)} disabled={downloading}
                                     className={`flex items-center justify-center p-1.5 rounded-lg border transition-all disabled:opacity-50 ${isDark ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100"}`}>
                                     {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                                   </button>
                                 )}
                                 {/* Share button — grid card */}
-                                {MY_PERMS.share && (
+                                {perms.share && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setShareFile(file); }}
                                     className={`flex items-center justify-center p-1.5 rounded-lg border transition-all ${isDark ? "bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"}`}>
                                     <Share2 className="w-3 h-3" />
                                   </button>
                                 )}
-                                {MY_PERMS.delete && (
+                                {perms.delete && (
                                   <button onClick={() => handleDelete(file.id)} disabled={isDel}
                                     className={`flex items-center justify-center p-1.5 rounded-lg border transition-all disabled:opacity-50 ${isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"}`}>
                                     {isDel ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
@@ -1002,21 +1028,21 @@ const FileView = () => {
                               <span className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>{new Date(file.uploadedAt).toLocaleDateString()}</span>
                             </div>
                             <div className="col-span-1 flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                              {MY_PERMS.canDownload && (
+                              {perms.canDownload && (
                                 <button onClick={() => handleDownload(file)} disabled={downloading}
                                   className={`p-1.5 rounded-lg transition-all disabled:opacity-50 ${isDark ? "hover:bg-emerald-500/20 text-emerald-400" : "hover:bg-emerald-100 text-emerald-600"}`}>
                                   {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                                 </button>
                               )}
                               {/* Share button — list row */}
-                              {MY_PERMS.share && (
+                              {perms.share && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setShareFile(file); }}
                                   className={`p-1.5 rounded-lg transition-all ${isDark ? "hover:bg-blue-500/20 text-blue-400" : "hover:bg-blue-100 text-blue-600"}`}>
                                   <Share2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {MY_PERMS.delete && (
+                              {perms.delete && (
                                 <button onClick={() => handleDelete(file.id)} disabled={isDel}
                                   className={`p-1.5 rounded-lg transition-all disabled:opacity-50 ${isDark ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-100 text-red-500"}`}>
                                   {isDel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -1048,6 +1074,7 @@ const FileView = () => {
                         isDark={isDark}
                         downloading={downloading}
                         deletingId={deletingId}
+                        userPerms={userPerms}
                       />
                     </motion.div>
                   )}
@@ -1085,7 +1112,7 @@ const FileView = () => {
             isDark={isDark}
             vaultId={vaultId}
             apiBaseUrl={import.meta.env.VITE_API_URL || "http://localhost:5000/api"}
-            canDownload={MY_PERMS.canDownload}
+            canDownload={userPerms.canDownload}
             vaultKey={vaultCryptoKey}
           />
         )}

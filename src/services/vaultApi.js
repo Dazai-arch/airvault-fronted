@@ -321,9 +321,14 @@ export const vaultApi = {
         xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve(JSON.parse(xhr.responseText));
-          } else if (xhr.status === 401 || xhr.status === 403) {
+          } else if (xhr.status === 401) {
             handleAuthError("Session expired");
             reject(new Error("Session expired"));
+          } else if (xhr.status === 403) {
+            // 403 = permission denied (not a session issue — don't wipe the token)
+            let msg = "You don't have upload permission for this vault";
+            try { msg = JSON.parse(xhr.responseText)?.message || msg; } catch {}
+            reject(new Error(msg));
           } else {
             try { reject(new Error(JSON.parse(xhr.responseText).message || "Upload failed")); }
             catch { reject(new Error("Upload failed")); }
