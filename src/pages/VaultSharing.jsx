@@ -539,7 +539,27 @@ const VaultSharing = () => {
     } catch { setInviteLink(`${window.location.origin}/vault/join/${activeVault.id}`); }
   }, [activeVault?.id]);
 
-  useEffect(() => { if (activeVault?.id) { fetchMembers(); fetchInviteLink(); } }, [activeVault?.id]);
+  // ── Owner guard — redirect viewers/editors away immediately ──────────────
+  const [accessChecked, setAccessChecked] = useState(false);
+
+  useEffect(() => {
+    if (!activeVault?.id) return;
+    const tok = localStorage.getItem("token") || sessionStorage.getItem("token");
+    fetch(`${API_BASE_URL}/vaults/${activeVault.id}`, {
+      headers: { Authorization: `Bearer ${tok}` }, credentials: "include",
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data?.vault?.isOwner) {
+          navigate("/maindashboard", { replace: true });
+        } else {
+          setAccessChecked(true);
+        }
+      })
+      .catch(() => navigate("/maindashboard", { replace: true }));
+  }, [activeVault?.id, navigate]);
+
+  useEffect(() => { if (accessChecked) { fetchMembers(); fetchInviteLink(); } }, [accessChecked, fetchMembers, fetchInviteLink]);
 
   // ── Role change handler ──────────────────────────────────────────────────
   const handleRoleChange = (memberId, newRole, errorMsg) => {
@@ -606,6 +626,9 @@ const VaultSharing = () => {
   const card     = `rounded-2xl border backdrop-blur-xl shadow-xl transition-all duration-300 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-white/80 border-gray-200"}`;
   const inputCls = `w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all ${isDark ? "bg-slate-800/60 border-slate-700/50 text-white placeholder:text-gray-500 focus:border-cyan-500/50 focus:ring-cyan-500/20" : "bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-cyan-400 focus:ring-cyan-500/20"}`;
   const innerRow = `p-4 rounded-xl border ${isDark ? "bg-slate-900/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`;
+
+  // Still verifying ownership — render nothing to prevent flash of content
+  if (!accessChecked && activeVault) return null;
 
   if (!activeVault) return (
     <div className={`h-screen w-full flex items-center justify-center ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"}`}>

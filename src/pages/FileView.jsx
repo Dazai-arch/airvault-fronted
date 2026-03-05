@@ -13,7 +13,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useVault } from "../context/VaultContext";
 import VaultTopBar from "../components/layout/VaultTopBar";
 import HamburgerMenu from "../components/layout/HamburgerMenu";
-import vaultApi, { restoreVaultKey, getVaultKey } from "../services/vaultApi";
+import vaultApi, { getVaultKey } from "../services/vaultApi";
 import ShareModal from "../components/modals/ShareModal";
 import FilePreviewModal from "../components/modals/FilePreviewModal";
 
@@ -379,7 +379,7 @@ const FileView = () => {
   if (!id) return;
 
   const tryUnlock = async () => {
-    // 1. Check if key is already cached
+    // 1. Check if key is already cached in memory
     try {
       const existing = getVaultKey(id);
       if (existing) {
@@ -389,16 +389,40 @@ const FileView = () => {
       }
     } catch { /* not cached yet */ }
 
-    // 2. Passwordless vault → use restoreVaultKey (fetches from server if needed)
-    if (!activeVault.hasPassword) {
+    // 2. Check localStorage (owner may have stored it previously)
+    const lsHex = localStorage.getItem(`zk_vault_key_${id}`);
+    if (lsHex) {
       try {
-        // ✅ restoreVaultKey (not unlockVaultKey) — it seeds localStorage from
-        // the server-persisted keyHex before deriving the CryptoKey
-        const key = await restoreVaultKey(id, false, null, null);
+        const { importKeyFromHex } = await import("../services/ZKcrypto");
+        const key = await importKeyFromHex(lsHex);
         setVaultCryptoKey(key);
         setVaultUnlocked(true);
+        return;
+      } catch { /* corrupted local key — fall through */ }
+    }
+
+    // 3. Passwordless vault — try fetching key from server ONCE.
+    //    Viewers will get 404 (they don't own the key) — that's expected, don't retry.
+    if (!activeVault.hasPassword) {
+      try {
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+        const res = await fetch(
+          `${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/vaults/${id}/zk-key`,
+          { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
+        );
+        if (res.ok) {
+          const { keyHex } = await res.json();
+          if (keyHex) {
+            localStorage.setItem(`zk_vault_key_${id}`, keyHex);
+            const { importKeyFromHex } = await import("../services/ZKcrypto");
+            const key = await importKeyFromHex(keyHex);
+            setVaultCryptoKey(key);
+            setVaultUnlocked(true);
+          }
+        }
+        // 404 / 403 = viewer doesn't have key access — silently stop, no retry
       } catch (e) {
-        console.warn("FileView: auto-unlock failed:", e.message);
+        console.warn("FileView: could not fetch vault key (viewer?):", e.message);
       }
     }
   };
@@ -954,21 +978,21 @@ const FileView = () => {
                                     : isDark ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"}`}>
                                   <Eye className="w-3 h-3" /> {isSel ? "Close" : "View"}
                                 </button>
-                                {perms.canDownload && (
+                                {userPerms.canDownload && (
                                   <button onClick={() => handleDownload(file)} disabled={downloading}
                                     className={`flex items-center justify-center p-1.5 rounded-lg border transition-all disabled:opacity-50 ${isDark ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 text-emerald-600 hover:bg-emerald-100"}`}>
                                     {downloading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
                                   </button>
                                 )}
                                 {/* Share button — grid card */}
-                                {perms.share && (
+                                {userPerms.share && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setShareFile(file); }}
                                     className={`flex items-center justify-center p-1.5 rounded-lg border transition-all ${isDark ? "bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100"}`}>
                                     <Share2 className="w-3 h-3" />
                                   </button>
                                 )}
-                                {perms.delete && (
+                                {userPerms.delete && (
                                   <button onClick={() => handleDelete(file.id)} disabled={isDel}
                                     className={`flex items-center justify-center p-1.5 rounded-lg border transition-all disabled:opacity-50 ${isDark ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20" : "bg-red-50 border-red-100 text-red-500 hover:bg-red-100"}`}>
                                     {isDel ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
@@ -1028,21 +1052,21 @@ const FileView = () => {
                               <span className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}>{new Date(file.uploadedAt).toLocaleDateString()}</span>
                             </div>
                             <div className="col-span-1 flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
-                              {perms.canDownload && (
+                              {userPerms.canDownload && (
                                 <button onClick={() => handleDownload(file)} disabled={downloading}
                                   className={`p-1.5 rounded-lg transition-all disabled:opacity-50 ${isDark ? "hover:bg-emerald-500/20 text-emerald-400" : "hover:bg-emerald-100 text-emerald-600"}`}>
                                   {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
                                 </button>
                               )}
                               {/* Share button — list row */}
-                              {perms.share && (
+                              {userPerms.share && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setShareFile(file); }}
                                   className={`p-1.5 rounded-lg transition-all ${isDark ? "hover:bg-blue-500/20 text-blue-400" : "hover:bg-blue-100 text-blue-600"}`}>
                                   <Share2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {perms.delete && (
+                              {userPerms.delete && (
                                 <button onClick={() => handleDelete(file.id)} disabled={isDel}
                                   className={`p-1.5 rounded-lg transition-all disabled:opacity-50 ${isDark ? "hover:bg-red-500/20 text-red-400" : "hover:bg-red-100 text-red-500"}`}>
                                   {isDel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}

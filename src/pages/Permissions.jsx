@@ -186,6 +186,22 @@ export default function Permissions() {
 
   const vaultId = activeVault?.id || activeVault?._id;
 
+  // ── Owner guard — redirect viewers/editors away immediately ───────────────
+  const [accessChecked, setAccessChecked] = useState(false);
+
+  useEffect(() => {
+    if (!vaultId) return;
+    apiFetch(`/vaults/${vaultId}`)
+      .then(({ vault }) => {
+        if (!vault?.isOwner) {
+          navigate("/maindashboard", { replace: true });
+        } else {
+          setAccessChecked(true);
+        }
+      })
+      .catch(() => navigate("/maindashboard", { replace: true }));
+  }, [vaultId, navigate]);
+
   // ── Toast helpers ──────────────────────────────────────────────────────────
   const toast = useCallback((message, type = "success") => {
     const id = Date.now();
@@ -209,7 +225,7 @@ export default function Permissions() {
     }
   }, [vaultId, toast]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (accessChecked) loadData(); }, [loadData, accessChecked]);
 
   // ── Invite user ────────────────────────────────────────────────────────────
   const handleAddUser = async () => {
@@ -351,6 +367,9 @@ export default function Permissions() {
     status === "active"  ? isDark ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600" :
     status === "pending" ? isDark ? "bg-amber-500/10 text-amber-400"     : "bg-amber-50 text-amber-600"     :
                            isDark ? "bg-gray-500/10 text-gray-400"        : "bg-gray-100 text-gray-500";
+
+  // Still checking access — render nothing to avoid flash of content
+  if (!accessChecked && activeVault) return null;
 
   if (!activeVault) {
     return (
