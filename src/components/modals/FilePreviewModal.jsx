@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Download, ZoomIn, ZoomOut, RotateCw, Maximize2,
   Minimize2, Lock, Loader2, AlertCircle, Music, File, ShieldOff,
-  FileText, Table, Presentation,
+  FileText, HardDrive, Clock, Eye, Database,
 } from "lucide-react";
 import { decryptToBlob } from "../../services/ZKcrypto";
 
@@ -24,32 +24,32 @@ const resolvePreviewType = (mimeType = "", name = "") => {
     return "audio";
   if (mime === "application/pdf" || ext === "pdf")
     return "pdf";
-  // Office formats — rendered via mammoth (docx) or Google Docs Viewer iframe
   if (mime.includes("wordprocessingml") || mime.includes("msword") || ["doc","docx"].includes(ext))
     return "docx";
   if (mime.includes("spreadsheetml") || mime.includes("excel") || ["xls","xlsx","csv"].includes(ext))
     return "spreadsheet";
   if (mime.includes("presentationml") || mime.includes("powerpoint") || ["ppt","pptx"].includes(ext))
     return "presentation";
-  // Plain text / code
   if (["txt","md","log","yaml","yml","xml","json","html","htm","css","js","ts","jsx","tsx",
        "py","java","cpp","c","cs","go","rs","php","rb","sh","bash","sql","ini","env",
        "toml","cfg","gitignore","dockerfile","makefile",
-       // JVM / mobile
        "kt","kts","gradle","scala","groovy","clj","cljs",
-       // systems
        "zig","v","nim","d","asm","s",
-       // web / config
        "vue","svelte","astro","mdx","graphql","gql","proto",
-       // data / infra
        "tf","hcl","bicep","jsonc","json5","lock","prisma",
-       // misc
        "r","m","lua","ex","exs","erl","hrl","hs","ml","mli","fs","fsx",
        "dart","coffee","elm","purs","reason","re","resi"].includes(ext)
       || mime.startsWith("text/"))
     return "text";
 
   return "unsupported";
+};
+
+const formatBytes = (bytes) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const k = 1024, sizes = ["B","KB","MB","GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / k ** i).toFixed(bytes / k ** i >= 10 ? 0 : 1)} ${sizes[i]}`;
 };
 
 // ─── Print / context-menu blockers ───────────────────────────────────────────
@@ -104,8 +104,70 @@ const ErrorMsg = ({ msg }) => (
   </div>
 );
 
+// ─── View-Only Info Panel ─────────────────────────────────────────────────────
+// Shown to viewers who have no vault key — no network requests made
+const ViewOnlyPanel = ({ file, isDark }) => {
+  const cleanName   = file?.name?.replace(/\.enc$/i, "") || "";
+  const ext         = getExt(cleanName);
+  const previewType = resolvePreviewType(file?.mimeType || "", cleanName);
+
+  const TYPE_ICONS = {
+    image: "🖼️", video: "🎬", audio: "🎵", pdf: "📄",
+    docx: "📝", spreadsheet: "📊", presentation: "📋",
+    text: "📃", unsupported: "📁",
+  };
+
+  return (
+    <div className={`h-full flex flex-col items-center justify-center gap-5 p-8 text-center overflow-y-auto vault-scrollbar ${isDark ? "bg-slate-900" : "bg-gray-50"}`}>
+      {/* Icon */}
+      <div className={`w-24 h-24 rounded-3xl flex items-center justify-center text-5xl shadow-xl flex-shrink-0 ${isDark ? "bg-slate-800 border border-slate-700/60" : "bg-white border border-gray-200"}`}>
+        {TYPE_ICONS[previewType] || "📁"}
+      </div>
+
+      {/* Name + type */}
+      <div className="flex-shrink-0">
+        <p className={`text-lg font-bold mb-1 truncate max-w-xs ${isDark ? "text-white" : "text-gray-900"}`}>
+          {cleanName}
+        </p>
+        <span className={`inline-block text-[10px] font-bold uppercase px-2 py-0.5 rounded ${isDark ? "bg-slate-700 text-gray-400" : "bg-gray-200 text-gray-500"}`}>
+          .{ext || "file"}
+        </span>
+      </div>
+
+      {/* Metadata card */}
+      <div className={`w-full max-w-sm rounded-2xl border divide-y flex-shrink-0 ${isDark ? "border-slate-700/50 divide-slate-700/50 bg-slate-800/50" : "border-gray-200 divide-gray-100 bg-white"}`}>
+        {[
+          { icon: HardDrive, label: "Size",      value: formatBytes(file?.sizeBytes ?? file?.size) },
+          { icon: Clock,     label: "Uploaded",  value: file?.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : "—" },
+          { icon: Database,  label: "Category",  value: file?.category || "General" },
+          { icon: Eye,       label: "Activity",  value: `${file?.views ?? 0} views · ${file?.downloads ?? 0} downloads` },
+        ].map(({ icon: Icon, label, value }) => (
+          <div key={label} className="flex items-center gap-3 px-4 py-2.5">
+            <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
+            <span className={`text-xs flex-1 text-left ${isDark ? "text-gray-400" : "text-gray-500"}`}>{label}</span>
+            <span className={`text-xs font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Encryption badge */}
+      {file?.isEncrypted && (
+        <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold flex-shrink-0 ${isDark ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>
+          <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+          AES-GCM 256 — Zero-knowledge encrypted
+        </div>
+      )}
+
+      {/* No-download notice */}
+      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs flex-shrink-0 ${isDark ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+        <ShieldOff className="w-3.5 h-3.5 flex-shrink-0" />
+        You have view-only access. File preview requires download permission.
+      </div>
+    </div>
+  );
+};
+
 // ─── Text / Code viewer ───────────────────────────────────────────────────────
-// Reads the Blob directly — no fetch, no timeout, no network round-trip
 const TextPreview = ({ blob, name, isDark, canDownload }) => {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -122,7 +184,6 @@ const TextPreview = ({ blob, name, isDark, canDownload }) => {
   if (loading) return <CenteredLoader />;
   if (error)   return <ErrorMsg msg={error} />;
 
-  // Syntax hint via simple coloring for code files
   const isCode = ["js","ts","jsx","tsx","py","java","cpp","c","cs","go","rs","php","rb",
                    "sh","sql","json","xml","yaml","yml","html","htm","css","toml"].includes(ext);
   return (
@@ -215,7 +276,7 @@ const AudioPreview = ({ url, name, isDark, canDownload }) => (
   </div>
 );
 
-// ─── PDF viewer (PDF.js canvas) ───────────────────────────────────────────────
+// ─── PDF viewer ───────────────────────────────────────────────────────────────
 const PDFPreview = ({ url, isDark, canDownload }) => {
   const [pdf,      setPdf]     = useState(null);
   const [pageNum,  setPageNum] = useState(1);
@@ -287,7 +348,7 @@ const PDFPreview = ({ url, isDark, canDownload }) => {
   );
 };
 
-// ─── Mammoth loader (loads once via script tag, not dynamic import) ───────────
+// ─── Mammoth loader ───────────────────────────────────────────────────────────
 let mammothLoadPromise = null;
 function loadMammoth() {
   if (window.mammoth) return Promise.resolve(window.mammoth);
@@ -295,17 +356,14 @@ function loadMammoth() {
   mammothLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js";
-    script.onload = () => {
-      if (window.mammoth) resolve(window.mammoth);
-      else reject(new Error("mammoth loaded but window.mammoth not found"));
-    };
-    script.onerror = () => reject(new Error("Failed to load mammoth.js from CDN"));
+    script.onload = () => window.mammoth ? resolve(window.mammoth) : reject(new Error("mammoth not found"));
+    script.onerror = () => reject(new Error("Failed to load mammoth.js"));
     document.head.appendChild(script);
   });
   return mammothLoadPromise;
 }
 
-// ─── DOCX Viewer (mammoth → HTML) ────────────────────────────────────────────
+// ─── DOCX Viewer ─────────────────────────────────────────────────────────────
 const DocxPreview = ({ blob, isDark, canDownload }) => {
   const [html,    setHtml]    = useState("");
   const [loading, setLoading] = useState(true);
@@ -313,19 +371,15 @@ const DocxPreview = ({ blob, isDark, canDownload }) => {
 
   useEffect(() => {
     if (!blob) return;
-    const convert = async () => {
+    (async () => {
       try {
-        const mammoth = await loadMammoth();
+        const mammoth  = await loadMammoth();
         const arrayBuf = await blob.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuf });
+        const result   = await mammoth.convertToHtml({ arrayBuffer: arrayBuf });
         setHtml(result.value);
-      } catch(e) {
-        setError("Could not render document: " + e.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    convert();
+      } catch(e) { setError("Could not render document: " + e.message); }
+      finally { setLoading(false); }
+    })();
   }, [blob]);
 
   if (loading) return <CenteredLoader label="Converting document…"/>;
@@ -337,18 +391,15 @@ const DocxPreview = ({ blob, isDark, canDownload }) => {
         style={{ userSelect: canDownload ? "auto" : "none" }}
         onCopy={!canDownload ? e => e.preventDefault() : undefined}
         onContextMenu={!canDownload ? e => e.preventDefault() : undefined}>
-        <div
-          className="prose prose-sm max-w-none docx-preview"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <div className="prose prose-sm max-w-none docx-preview" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
       <style>{`
-        .docx-preview table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-        .docx-preview td, .docx-preview th { border: 1px solid #d1d5db; padding: 6px 10px; }
-        .docx-preview img { max-width: 100%; height: auto; }
-        .docx-preview p { margin: 0.5em 0; line-height: 1.6; }
-        .docx-preview h1,.docx-preview h2,.docx-preview h3 { font-weight: 700; margin: 1em 0 0.5em; }
-        .docx-preview h1 { font-size: 1.5em; } .docx-preview h2 { font-size: 1.25em; }
+        .docx-preview table{border-collapse:collapse;width:100%;margin:1em 0}
+        .docx-preview td,.docx-preview th{border:1px solid #d1d5db;padding:6px 10px}
+        .docx-preview img{max-width:100%;height:auto}
+        .docx-preview p{margin:0.5em 0;line-height:1.6}
+        .docx-preview h1,.docx-preview h2,.docx-preview h3{font-weight:700;margin:1em 0 0.5em}
+        .docx-preview h1{font-size:1.5em}.docx-preview h2{font-size:1.25em}
       `}</style>
     </div>
   );
@@ -362,17 +413,14 @@ function loadXLSX() {
   xlsxLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-    script.onload = () => {
-      if (window.XLSX) resolve(window.XLSX);
-      else reject(new Error("XLSX loaded but window.XLSX not found"));
-    };
-    script.onerror = () => reject(new Error("Failed to load SheetJS from CDN"));
+    script.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error("XLSX not found"));
+    script.onerror = () => reject(new Error("Failed to load SheetJS"));
     document.head.appendChild(script);
   });
   return xlsxLoadPromise;
 }
 
-// ─── Spreadsheet / CSV viewer ─────────────────────────────────────────────────
+// ─── Spreadsheet viewer ───────────────────────────────────────────────────────
 const SpreadsheetPreview = ({ blob, name, isDark, canDownload }) => {
   const [rows,    setRows]    = useState([]);
   const [headers, setHeaders] = useState([]);
@@ -384,46 +432,39 @@ const SpreadsheetPreview = ({ blob, name, isDark, canDownload }) => {
 
   useEffect(() => {
     if (!blob) return;
-    const parse = async () => {
+    (async () => {
       try {
         if (ext === "csv") {
-          // CSV: parse manually
-          const text = await blob.text();
+          const text  = await blob.text();
           const lines = text.split(/\r?\n/).filter(Boolean);
-          if (lines.length === 0) { setRows([]); setHeaders([]); return; }
+          if (!lines.length) { setRows([]); setHeaders([]); return; }
           const parseCSVLine = (line) => {
             const result = []; let cur = "", inQ = false;
             for (let i = 0; i < line.length; i++) {
               const ch = line[i];
-              if (ch === '"' && (i===0 || line[i-1]===',')) { inQ = true; continue; }
-              if (ch === '"' && inQ && line[i+1] === '"') { cur += '"'; i++; continue; }
-              if (ch === '"' && inQ) { inQ = false; continue; }
-              if (ch === ',' && !inQ) { result.push(cur); cur = ""; continue; }
+              if (ch==='"' && (i===0||line[i-1]===',')) { inQ=true; continue; }
+              if (ch==='"' && inQ && line[i+1]==='"')   { cur+='"'; i++; continue; }
+              if (ch==='"' && inQ)                       { inQ=false; continue; }
+              if (ch===',' && !inQ)                      { result.push(cur); cur=""; continue; }
               cur += ch;
             }
-            result.push(cur);
-            return result;
+            result.push(cur); return result;
           };
           setHeaders(parseCSVLine(lines[0]));
           setRows(lines.slice(1).map(parseCSVLine));
         } else {
-          // XLSX: use SheetJS
           const XLSX = await loadXLSX();
-          const ab = await blob.arrayBuffer();
-          const wb = XLSX.read(ab, { type: "array" });
+          const ab   = await blob.arrayBuffer();
+          const wb   = XLSX.read(ab, { type: "array" });
           setSheets(wb.SheetNames);
-          const ws = wb.Sheets[wb.SheetNames[sheet]];
+          const ws   = wb.Sheets[wb.SheetNames[sheet]];
           const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-          setHeaders((data[0] || []).map(String));
+          setHeaders((data[0]||[]).map(String));
           setRows(data.slice(1));
         }
-      } catch(e) {
-        setError("Could not parse spreadsheet: " + e.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    parse();
+      } catch(e) { setError("Could not parse spreadsheet: " + e.message); }
+      finally { setLoading(false); }
+    })();
   }, [blob, sheet, ext]);
 
   if (loading) return <CenteredLoader label="Parsing spreadsheet…"/>;
@@ -435,11 +476,7 @@ const SpreadsheetPreview = ({ blob, name, isDark, canDownload }) => {
         <div className={`flex gap-1 px-4 py-2 border-b overflow-x-auto flex-shrink-0 vault-scrollbar ${isDark ? "border-slate-700/50 bg-slate-900" : "border-gray-200 bg-white"}`}>
           {sheets.map((s,i) => (
             <button key={s} onClick={() => { setSheet(i); setLoading(true); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                i === sheet
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white"
-                  : isDark ? "text-gray-400 hover:bg-slate-700" : "text-gray-600 hover:bg-gray-100"
-              }`}>{s}</button>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${i===sheet ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white" : isDark ? "text-gray-400 hover:bg-slate-700" : "text-gray-600 hover:bg-gray-100"}`}>{s}</button>
           ))}
         </div>
       )}
@@ -458,12 +495,12 @@ const SpreadsheetPreview = ({ blob, name, isDark, canDownload }) => {
             </tr>
           </thead>
           <tbody>
-            {rows.slice(0, 1000).map((row, ri) => (
-              <tr key={ri} className={ri % 2 === 0 ? (isDark ? "bg-slate-900/40" : "bg-white") : (isDark ? "bg-slate-800/20" : "bg-gray-50/50")}>
-                <td className={`px-3 py-1.5 text-center font-mono border ${isDark ? "border-slate-700/50 text-gray-600" : "border-gray-100 text-gray-400"}`}>{ri+1}</td>
+            {rows.slice(0,1000).map((row,ri) => (
+              <tr key={ri} className={ri%2===0?(isDark?"bg-slate-900/40":"bg-white"):(isDark?"bg-slate-800/20":"bg-gray-50/50")}>
+                <td className={`px-3 py-1.5 text-center font-mono border ${isDark?"border-slate-700/50 text-gray-600":"border-gray-100 text-gray-400"}`}>{ri+1}</td>
                 {headers.map((_,ci) => (
-                  <td key={ci} className={`px-4 py-1.5 border whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis ${isDark ? "border-slate-700/40 text-gray-300" : "border-gray-100 text-gray-700"}`}>
-                    {String(row[ci] ?? "")}
+                  <td key={ci} className={`px-4 py-1.5 border whitespace-nowrap max-w-[300px] overflow-hidden text-ellipsis ${isDark?"border-slate-700/40 text-gray-300":"border-gray-100 text-gray-700"}`}>
+                    {String(row[ci]??"")}
                   </td>
                 ))}
               </tr>
@@ -471,7 +508,7 @@ const SpreadsheetPreview = ({ blob, name, isDark, canDownload }) => {
           </tbody>
         </table>
         {rows.length > 1000 && (
-          <div className={`text-center py-3 text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+          <div className={`text-center py-3 text-xs ${isDark?"text-gray-500":"text-gray-400"}`}>
             Showing first 1,000 of {rows.length} rows. Download to view all.
           </div>
         )}
@@ -480,10 +517,9 @@ const SpreadsheetPreview = ({ blob, name, isDark, canDownload }) => {
   );
 };
 
-// ─── Presentation viewer (PPTX → slide thumbnails via PptxGenJS parse) ───────
+// ─── Presentation viewer ──────────────────────────────────────────────────────
 const PresentationPreview = ({ blob, name, onDownload, isDark, canDownload }) => {
   const [objectUrl, setObjectUrl] = useState(null);
-
   useEffect(() => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
@@ -493,75 +529,29 @@ const PresentationPreview = ({ blob, name, onDownload, isDark, canDownload }) =>
 
   return (
     <div className="h-full flex flex-col items-center justify-center gap-6 p-8 text-center">
-      <div
-        className={`w-24 h-24 rounded-3xl flex items-center justify-center shadow-xl ${
-          isDark
-            ? "bg-orange-500/20 border border-orange-500/30"
-            : "bg-orange-50 border border-orange-200"
-        }`}
-      >
+      <div className={`w-24 h-24 rounded-3xl flex items-center justify-center shadow-xl ${isDark?"bg-orange-500/20 border border-orange-500/30":"bg-orange-50 border border-orange-200"}`}>
         <FileText className="w-12 h-12 text-orange-400" />
       </div>
-
       <div>
-        <p
-          className={`text-lg font-bold mb-2 ${
-            isDark ? "text-white" : "text-gray-900"
-          }`}
-        >
-          {name?.replace(/\.enc$/i, "")}
-        </p>
-        <p
-          className={`text-sm mb-1 ${
-            isDark ? "text-gray-400" : "text-gray-500"
-          }`}
-        >
-          PowerPoint presentations cannot be previewed in the browser.
-        </p>
-        <p className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-          Download to open in PowerPoint, LibreOffice Impress, or Google Slides.
-        </p>
+        <p className={`text-lg font-bold mb-2 ${isDark?"text-white":"text-gray-900"}`}>{name?.replace(/\.enc$/i,"")}</p>
+        <p className={`text-sm mb-1 ${isDark?"text-gray-400":"text-gray-500"}`}>PowerPoint presentations cannot be previewed in the browser.</p>
+        <p className={`text-xs ${isDark?"text-gray-500":"text-gray-400"}`}>Download to open in PowerPoint, LibreOffice Impress, or Google Slides.</p>
       </div>
-
       {canDownload ? (
         <div className="flex flex-col items-center gap-3">
-          <button
-            onClick={onDownload}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-lg shadow-orange-500/25 hover:scale-[1.02] transition-all"
-          >
-            <Download className="w-4 h-4" />
-            Download Presentation
+          <button onClick={onDownload} className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-orange-500 to-amber-600 text-white shadow-lg shadow-orange-500/25 hover:scale-[1.02] transition-all">
+            <Download className="w-4 h-4"/> Download Presentation
           </button>
-
           {objectUrl && (
             <button
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = objectUrl;
-                a.download = name?.replace(/\.enc$/i, "") || "presentation.pptx";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-              }}
-              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold border transition-all hover:scale-[1.02] ${
-                isDark
-                  ? "border-orange-500/40 text-orange-400 hover:bg-orange-500/10"
-                  : "border-orange-300 text-orange-500 hover:bg-orange-50"
-              }`}
-            >
-              <Download className="w-3.5 h-3.5" />
-              Save File Directly
+              onClick={() => { const a=document.createElement("a"); a.href=objectUrl; a.download=name?.replace(/\.enc$/i,"")||"presentation.pptx"; document.body.appendChild(a); a.click(); document.body.removeChild(a); }}
+              className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold border transition-all hover:scale-[1.02] ${isDark?"border-orange-500/40 text-orange-400 hover:bg-orange-500/10":"border-orange-300 text-orange-500 hover:bg-orange-50"}`}>
+              <Download className="w-3.5 h-3.5"/> Save File Directly
             </button>
           )}
         </div>
       ) : (
-        <p
-          className={`text-xs px-4 py-2.5 rounded-xl border ${
-            isDark
-              ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-              : "bg-amber-50 border-amber-200 text-amber-600"
-          }`}
-        >
+        <p className={`text-xs px-4 py-2.5 rounded-xl border ${isDark?"bg-amber-500/10 border-amber-500/20 text-amber-400":"bg-amber-50 border-amber-200 text-amber-600"}`}>
           You don&apos;t have permission to download this file.
         </p>
       )}
@@ -572,22 +562,19 @@ const PresentationPreview = ({ blob, name, onDownload, isDark, canDownload }) =>
 // ─── Unsupported ──────────────────────────────────────────────────────────────
 const UnsupportedPreview = ({ name, ext, onDownload, isDark, canDownload }) => (
   <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
-    <div className={`w-20 h-20 rounded-3xl flex items-center justify-center ${isDark ? "bg-slate-700" : "bg-gray-100"}`}>
-      <File className={`w-10 h-10 ${isDark ? "text-gray-400" : "text-gray-500"}`}/>
+    <div className={`w-20 h-20 rounded-3xl flex items-center justify-center ${isDark?"bg-slate-700":"bg-gray-100"}`}>
+      <File className={`w-10 h-10 ${isDark?"text-gray-400":"text-gray-500"}`}/>
     </div>
     <div>
-      <p className={`text-base font-bold mb-1 ${isDark ? "text-white" : "text-gray-900"}`}>Preview not available</p>
-      <p className={`text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}>
-        <strong>.{ext || "Unknown"}</strong> files cannot be previewed in the browser.
-      </p>
+      <p className={`text-base font-bold mb-1 ${isDark?"text-white":"text-gray-900"}`}>Preview not available</p>
+      <p className={`text-sm ${isDark?"text-gray-400":"text-gray-500"}`}><strong>.{ext||"Unknown"}</strong> files cannot be previewed in the browser.</p>
     </div>
     {canDownload ? (
-      <button onClick={onDownload}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:scale-[1.02] transition-all">
+      <button onClick={onDownload} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25 hover:scale-[1.02] transition-all">
         <Download className="w-4 h-4"/> Download to view
       </button>
     ) : (
-      <p className={`text-xs px-4 py-2.5 rounded-xl border ${isDark ? "bg-amber-500/10 border-amber-500/20 text-amber-400" : "bg-amber-50 border-amber-200 text-amber-600"}`}>
+      <p className={`text-xs px-4 py-2.5 rounded-xl border ${isDark?"bg-amber-500/10 border-amber-500/20 text-amber-400":"bg-amber-50 border-amber-200 text-amber-600"}`}>
         You don&apos;t have permission to download this file.
       </p>
     )}
@@ -604,11 +591,12 @@ export default function FilePreviewModal({
   apiBaseUrl,
   canDownload = true,
   vaultKey,
+  viewOnly = false,          // ← true when viewer has no vault key — skips all fetching
   blobUrl: externalBlobUrl,
 }) {
   const [blobUrl,     setBlobUrl]  = useState(externalBlobUrl || null);
-  const [blob,        setBlob]     = useState(null); // raw Blob for Office parsers
-  const [loading,     setLoading]  = useState(!externalBlobUrl);
+  const [blob,        setBlob]     = useState(null);
+  const [loading,     setLoading]  = useState(!externalBlobUrl && !viewOnly && !!vaultKey);
   const [error,       setError]    = useState(null);
   const [fullscreen,  setFull]     = useState(false);
   const [downloading, setDl]       = useState(false);
@@ -618,65 +606,56 @@ export default function FilePreviewModal({
   const previewType = resolvePreviewType(mimeType, cleanName);
   const ext         = getExt(cleanName);
 
-  usePrintBlock(!canDownload);
-  useContextMenuBlock(!canDownload && ["image","text"].includes(previewType));
+  // Block printing/copying for restricted users
+  usePrintBlock(!canDownload || viewOnly);
+  useContextMenuBlock((!canDownload || viewOnly) && ["image","text"].includes(previewType));
 
-  // ── Fetch + (optionally) decrypt ──────────────────────────────────────────
+  // ── Fetch + decrypt (OWNER / EDITOR with vault key only) ──────────────────
   useEffect(() => {
+    // ── VIEWER PATH: no vault key → show info panel, make zero network calls ─
+    if (viewOnly || !vaultKey) return;
+
     if (externalBlobUrl || !file || !vaultId) return;
     if (previewType === "unsupported") { setLoading(false); return; }
 
     let revoked = false;
     const go = async () => {
-  setLoading(true); setError(null);
-  try {
-    
-    const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      setLoading(true); setError(null);
+      try {
+        const token = localStorage.getItem("token") || sessionStorage.getItem("token");
 
-// Single request — backend now streams encrypted bytes directly
-const fileRes = await fetch(
-  `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/download`,
-  { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
-);
+        const fileRes = await fetch(
+          `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/download`,
+          { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
+        );
+        if (!fileRes.ok) throw new Error("Could not fetch file from server");
+        const buf = await fileRes.arrayBuffer();
 
-if (!fileRes.ok) throw new Error("Could not fetch file from server");
-const buf = await fileRes.arrayBuffer();
-    //console.log("buf byteLength:", buf.byteLength);
+        let finalBlob;
+        if (file.isEncrypted) {
+          finalBlob = await decryptToBlob(buf, vaultKey, mimeType);
+        } else {
+          finalBlob = new Blob([buf], { type: mimeType });
+        }
 
-const firstBytes = new Uint8Array(buf).slice(0, 8);
-//console.log("first bytes:", Array.from(firstBytes));
-
-    // 3. Decrypt if needed
-    let finalBlob;
-    if (file.isEncrypted) {
-      //console.log("vaultKey present:", !!vaultKey);
-      if (!vaultKey) throw new Error("Vault is locked. Open Upload with or without Folder to Open the vault and preview files.");
-      finalBlob = await decryptToBlob(buf, vaultKey, mimeType);
-      //console.log("decrypted blob size:", finalBlob.size);
-    } else {
-      finalBlob = new Blob([buf], { type: mimeType });
-      //console.log("plain blob size:", finalBlob.size);
-    }
-
-    if (!revoked) {
-      setBlob(finalBlob);
-      setBlobUrl(URL.createObjectURL(finalBlob));
-      //console.log("=== PREVIEW SUCCESS ===");
-    }
-  } catch(e) {
-    console.error("=== PREVIEW ERROR ===", e);
-    if (!revoked) setError(e.message || "Failed to load file");
-  } finally {
-    if (!revoked) setLoading(false);
-  }
-};
+        if (!revoked) {
+          setBlob(finalBlob);
+          setBlobUrl(URL.createObjectURL(finalBlob));
+        }
+      } catch(e) {
+        console.error("=== PREVIEW ERROR ===", e);
+        if (!revoked) setError(e.message || "Failed to load file");
+      } finally {
+        if (!revoked) setLoading(false);
+      }
+    };
     go();
     return () => {
       revoked = true;
       if (blobUrl && !externalBlobUrl) URL.revokeObjectURL(blobUrl);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file?.id, vaultKey, previewType]);
+  }, [file?.id, vaultKey, previewType, viewOnly]);
 
   useEffect(() => {
     return () => { if (blobUrl && !externalBlobUrl) URL.revokeObjectURL(blobUrl); };
@@ -690,17 +669,21 @@ const firstBytes = new Uint8Array(buf).slice(0, 8);
   }, [fullscreen, onClose]);
 
   const handleDownload = useCallback(async () => {
-    if (!canDownload) return;
+    if (!canDownload || viewOnly) return;
     setDl(true);
     try { await onDownload(file); } finally { setDl(false); }
-  }, [file, onDownload, canDownload]);
+  }, [file, onDownload, canDownload, viewOnly]);
 
-  // ── Render content by type ─────────────────────────────────────────────────
+  // ── Render content ─────────────────────────────────────────────────────────
   const renderContent = () => {
+    // VIEWER: no vault key → info panel, zero network calls, no error state
+    if (viewOnly || !vaultKey) {
+      return <ViewOnlyPanel file={file} isDark={isDark} />;
+    }
+
     if (loading) return <CenteredLoader/>;
     if (error)   return <ErrorMsg msg={error}/>;
 
-    // Office types need the raw blob, not a blobUrl
     if (previewType === "docx" && blob)
       return <DocxPreview blob={blob} isDark={isDark} canDownload={canDownload}/>;
     if (previewType === "spreadsheet" && blob)
@@ -708,7 +691,6 @@ const firstBytes = new Uint8Array(buf).slice(0, 8);
     if (previewType === "presentation" && blob)
       return <PresentationPreview blob={blob} name={cleanName} onDownload={handleDownload} isDark={isDark} canDownload={canDownload}/>;
 
-    // Types that use blobUrl
     if (blobUrl) {
       switch (previewType) {
         case "image":   return <ImagePreview url={blobUrl} name={cleanName} canDownload={canDownload}/>;
@@ -729,11 +711,10 @@ const firstBytes = new Uint8Array(buf).slice(0, 8);
     ? `w-full h-full flex flex-col ${isDark ? "bg-slate-900" : "bg-white"}`
     : `w-full max-w-5xl h-[88vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl border ${isDark ? "bg-slate-900 border-slate-700/60" : "bg-white border-gray-200"}`;
 
-  // Type badge colours
   const TYPE_COLORS = {
     image:"from-violet-500 to-purple-600", video:"from-pink-500 to-rose-600",
-    audio:"from-lime-500 to-green-600", pdf:"from-red-500 to-rose-600",
-    docx:"from-blue-500 to-indigo-600", spreadsheet:"from-emerald-500 to-teal-600",
+    audio:"from-lime-500 to-green-600",    pdf:"from-red-500 to-rose-600",
+    docx:"from-blue-500 to-indigo-600",    spreadsheet:"from-emerald-500 to-teal-600",
     presentation:"from-orange-500 to-amber-600", text:"from-gray-500 to-slate-600",
     unsupported:"from-slate-500 to-gray-600",
   };
@@ -755,7 +736,6 @@ const firstBytes = new Uint8Array(buf).slice(0, 8);
           onClick={e => e.stopPropagation()}
           className={`${panelCls} relative`}>
 
-          {/* Top accent bar */}
           <div className={`h-[3px] bg-gradient-to-r ${typeGradient} flex-shrink-0`}/>
 
           {/* Header */}
@@ -769,19 +749,20 @@ const firstBytes = new Uint8Array(buf).slice(0, 8);
                     <Lock className="w-2.5 h-2.5"/> ZK Encrypted
                   </span>
                 )}
-                {!canDownload && (
+                {(viewOnly || !canDownload) && (
                   <span className={`flex items-center gap-1 text-[10px] font-semibold ${isDark ? "text-amber-400" : "text-amber-600"}`}>
                     <ShieldOff className="w-2.5 h-2.5"/> View only
                   </span>
                 )}
-                <span className={`text-[10px] capitalize px-1.5 py-0.5 rounded-full ${isDark ? "bg-gradient-to-r " + typeGradient + " text-white/80" : "bg-gray-100 text-gray-500"}`} style={{ backgroundClip: isDark ? "unset" : undefined }}>
+                <span className={`text-[10px] capitalize px-1.5 py-0.5 rounded-full ${isDark ? "bg-slate-700 text-gray-400" : "bg-gray-100 text-gray-500"}`}>
                   {previewType}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5 flex-shrink-0">
-              {canDownload && (
+              {/* Download button only for users with key + canDownload */}
+              {canDownload && !viewOnly && (
                 <button onClick={handleDownload} disabled={downloading}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all disabled:opacity-60 ${isDark ? "bg-slate-800 border-slate-700 text-gray-300 hover:border-cyan-500/50 hover:text-cyan-400" : "bg-gray-50 border-gray-200 text-gray-600 hover:border-cyan-400 hover:text-cyan-600"}`}>
                   {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <Download className="w-3.5 h-3.5"/>}
@@ -799,13 +780,13 @@ const firstBytes = new Uint8Array(buf).slice(0, 8);
             </div>
           </div>
 
-          {/* Content area */}
+          {/* Content */}
           <div className="flex-1 overflow-hidden relative">
             {renderContent()}
           </div>
 
-          {/* View-only watermark */}
-          {!canDownload && (
+          {/* VIEW ONLY watermark */}
+          {(viewOnly || !canDownload) && (
             <div className="absolute inset-0 pointer-events-none select-none overflow-hidden flex items-center justify-center z-10">
               <p className={`rotate-[-30deg] text-6xl font-black tracking-widest opacity-[0.035] whitespace-nowrap ${isDark ? "text-white" : "text-black"}`}>VIEW ONLY</p>
             </div>
