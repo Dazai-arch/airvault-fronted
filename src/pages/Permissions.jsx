@@ -186,20 +186,25 @@ export default function Permissions() {
 
   const vaultId = activeVault?.id || activeVault?._id;
 
-  // ── Owner guard — redirect viewers/editors away immediately ───────────────
+  // ── Owner guard — show message then redirect viewers/editors ─────────────
   const [accessChecked, setAccessChecked] = useState(false);
+  const [accessDenied,  setAccessDenied]  = useState(false);
 
   useEffect(() => {
     if (!vaultId) return;
     apiFetch(`/vaults/${vaultId}`)
       .then(({ vault }) => {
         if (!vault?.isOwner) {
-          navigate("/maindashboard", { replace: true });
+          setAccessDenied(true);
+          setTimeout(() => navigate("/maindashboard", { replace: true }), 3000);
         } else {
           setAccessChecked(true);
         }
       })
-      .catch(() => navigate("/maindashboard", { replace: true }));
+      .catch(() => {
+        setAccessDenied(true);
+        setTimeout(() => navigate("/maindashboard", { replace: true }), 3000);
+      });
   }, [vaultId, navigate]);
 
   // ── Toast helpers ──────────────────────────────────────────────────────────
@@ -367,6 +372,32 @@ export default function Permissions() {
     status === "active"  ? isDark ? "bg-emerald-500/10 text-emerald-400" : "bg-emerald-50 text-emerald-600" :
     status === "pending" ? isDark ? "bg-amber-500/10 text-amber-400"     : "bg-amber-50 text-amber-600"     :
                            isDark ? "bg-gray-500/10 text-gray-400"        : "bg-gray-100 text-gray-500";
+
+  // Show access-denied message before redirecting
+  if (accessDenied) {
+    return (
+      <div className={`min-h-screen w-full flex items-center justify-center ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"}`}>
+        <div className={`max-w-sm w-full mx-4 rounded-2xl border shadow-2xl overflow-hidden ${isDark ? "bg-slate-800/80 border-slate-700/60" : "bg-white border-gray-200"}`}>
+          <div className="h-[3px] bg-gradient-to-r from-red-500 via-rose-500 to-pink-500" />
+          <div className="p-8 text-center">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${isDark ? "bg-red-500/10 border border-red-500/20" : "bg-red-50 border border-red-100"}`}>
+              <Shield className="w-8 h-8 text-red-400" />
+            </div>
+            <h2 className={`text-lg font-bold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
+              Access Restricted
+            </h2>
+            <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+              The <span className={`font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>Permissions</span> page is only accessible to the vault owner.
+            </p>
+            <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs ${isDark ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+              <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+              Redirecting you to dashboard…
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Still checking access — render nothing to avoid flash of content
   if (!accessChecked && activeVault) return null;

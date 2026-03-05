@@ -539,8 +539,9 @@ const VaultSharing = () => {
     } catch { setInviteLink(`${window.location.origin}/vault/join/${activeVault.id}`); }
   }, [activeVault?.id]);
 
-  // ── Owner guard — redirect viewers/editors away immediately ──────────────
+  // ── Owner guard — show message then redirect viewers ─────────────────────
   const [accessChecked, setAccessChecked] = useState(false);
+  const [accessDenied,  setAccessDenied]  = useState(false);
 
   useEffect(() => {
     if (!activeVault?.id) return;
@@ -551,12 +552,16 @@ const VaultSharing = () => {
       .then(r => r.json())
       .then(data => {
         if (!data?.vault?.isOwner) {
-          navigate("/maindashboard", { replace: true });
+          setAccessDenied(true);
+          setTimeout(() => navigate("/maindashboard", { replace: true }), 3000);
         } else {
           setAccessChecked(true);
         }
       })
-      .catch(() => navigate("/maindashboard", { replace: true }));
+      .catch(() => {
+        setAccessDenied(true);
+        setTimeout(() => navigate("/maindashboard", { replace: true }), 3000);
+      });
   }, [activeVault?.id, navigate]);
 
   useEffect(() => { if (accessChecked) { fetchMembers(); fetchInviteLink(); } }, [accessChecked, fetchMembers, fetchInviteLink]);
@@ -626,6 +631,32 @@ const VaultSharing = () => {
   const card     = `rounded-2xl border backdrop-blur-xl shadow-xl transition-all duration-300 ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-white/80 border-gray-200"}`;
   const inputCls = `w-full px-4 py-2.5 rounded-xl border text-sm focus:outline-none focus:ring-2 transition-all ${isDark ? "bg-slate-800/60 border-slate-700/50 text-white placeholder:text-gray-500 focus:border-cyan-500/50 focus:ring-cyan-500/20" : "bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-cyan-400 focus:ring-cyan-500/20"}`;
   const innerRow = `p-4 rounded-xl border ${isDark ? "bg-slate-900/50 border-slate-700/50" : "bg-gray-50 border-gray-200"}`;
+
+  // Show access-denied message before redirecting
+  if (accessDenied) {
+    return (
+      <div className={`min-h-screen w-full flex items-center justify-center ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"}`}>
+        <div className={`max-w-sm w-full mx-4 rounded-2xl border shadow-2xl overflow-hidden ${isDark ? "bg-slate-800/80 border-slate-700/60" : "bg-white border-gray-200"}`}>
+          <div className="h-[3px] bg-gradient-to-r from-red-500 via-rose-500 to-pink-500" />
+          <div className="p-8 text-center">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5 ${isDark ? "bg-red-500/10 border border-red-500/20" : "bg-red-50 border border-red-100"}`}>
+              <Shield className="w-8 h-8 text-red-400" />
+            </div>
+            <h2 className={`text-lg font-bold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}>
+              Access Restricted
+            </h2>
+            <p className={`text-sm mb-4 ${isDark ? "text-gray-400" : "text-gray-500"}`}>
+              The <span className={`font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>Sharing</span> page is only accessible to the vault owner.
+            </p>
+            <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs ${isDark ? "bg-amber-500/10 border-amber-500/20 text-amber-300" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+              <Lock className="w-3.5 h-3.5 flex-shrink-0" />
+              Redirecting you to dashboard…
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Still verifying ownership — render nothing to prevent flash of content
   if (!accessChecked && activeVault) return null;

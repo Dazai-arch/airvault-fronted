@@ -138,9 +138,9 @@ const FileViewer = ({
 
         {/* Actions */}
         <div className="flex gap-2 px-4 pb-4">
-          {/* Open Full — launches FilePreviewModal */}
+          {/* Open Full — always available; viewers get a view-only modal (no decrypt) */}
           <button
-            onClick={() => onPreview(file)}
+            onClick={() => onPreview(file, !perms.canDownload)}
             className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20 hover:shadow-cyan-500/40 hover:scale-[1.02] transition-all duration-300">
             <Eye className="w-3.5 h-3.5" /> Open Full
           </button>
@@ -223,21 +223,33 @@ const FileViewer = ({
 
         {/* Share link + badges + delete */}
         <div className="px-4 pb-4 space-y-2">
-          <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${isDark ? "bg-slate-900/40 border-slate-700/40" : "bg-gray-50 border-gray-100"}`}>
-            <div className="min-w-0 flex-1">
-              <p className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 ${isDark ? "text-gray-600" : "text-gray-400"}`}>Share Link</p>
-              <p className={`text-[10px] font-mono truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}</p>
+          {perms.share ? (
+            <div className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border ${isDark ? "bg-slate-900/40 border-slate-700/40" : "bg-gray-50 border-gray-100"}`}>
+              <div className="min-w-0 flex-1">
+                <p className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 ${isDark ? "text-gray-600" : "text-gray-400"}`}>Share Link</p>
+                <p className={`text-[10px] font-mono truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}</p>
+              </div>
+              <button onClick={() => onCopy(`${import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}`)}
+                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all flex-shrink-0 ${
+                  copied
+                    ? isDark ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-600"
+                    : isDark ? "bg-slate-700/50 border-slate-600/50 text-gray-400 hover:text-white" : "bg-gray-100 border-gray-200 text-gray-600 hover:text-gray-900"
+                }`}>
+                {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copied ? "Copied" : "Copy"}
+              </button>
             </div>
-            <button onClick={() => onCopy(`${import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}`)}
-              className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold border transition-all flex-shrink-0 ${
-                copied
-                  ? isDark ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400" : "bg-emerald-50 border-emerald-200 text-emerald-600"
-                  : isDark ? "bg-slate-700/50 border-slate-600/50 text-gray-400 hover:text-white" : "bg-gray-100 border-gray-200 text-gray-600 hover:text-gray-900"
-              }`}>
-              {copied ? <CheckCircle className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
+          ) : (
+            <div className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border ${isDark ? "bg-slate-900/40 border-slate-700/40" : "bg-gray-50 border-gray-100"}`}>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isDark ? "bg-slate-700/60" : "bg-gray-200"}`}>
+                <Share2 className={`w-3.5 h-3.5 ${isDark ? "text-gray-500" : "text-gray-400"}`} />
+              </div>
+              <div className="min-w-0">
+                <p className={`text-[9px] font-bold uppercase tracking-widest mb-0.5 ${isDark ? "text-gray-600" : "text-gray-400"}`}>Share Link</p>
+                <p className={`text-[10px] ${isDark ? "text-gray-500" : "text-gray-400"}`}>You don't have permission to share this file</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-2 flex-wrap">
             {file.isEncrypted && (
@@ -557,7 +569,7 @@ const FileView = () => {
       await vaultApi.deleteVaultFile(id, fileId);
       setFiles(prev => prev.filter(f => f.id !== fileId));
       setSelectedFile(prev => (prev?.id === fileId ? null : prev));
-      setPreviewFile(prev => (prev?.id === fileId ? null : prev));
+      setPreviewFile(prev => (prev?.file?.id === fileId ? null : prev));
     } catch (e) {
       console.error("Delete failed:", e.message);
     } finally {
@@ -1092,7 +1104,7 @@ const FileView = () => {
                         onDelete={handleDelete}
                         onDownload={handleDownload}
                         onShare={(f) => setShareFile(f)}
-                        onPreview={(f) => setPreviewFile(f)}
+                        onPreview={(f, viewOnly) => setPreviewFile({ file: f, viewOnly: !!viewOnly })}
                         copied={copied}
                         onCopy={handleCopy}
                         isDark={isDark}
@@ -1129,15 +1141,16 @@ const FileView = () => {
       <AnimatePresence>
         {previewFile && (
           <FilePreviewModal
-            key={previewFile.id}
-            file={previewFile}
+            key={previewFile.file.id}
+            file={previewFile.file}
             onClose={() => setPreviewFile(null)}
             onDownload={handleDownload}
             isDark={isDark}
             vaultId={vaultId}
             apiBaseUrl={import.meta.env.VITE_API_URL || "http://localhost:5000/api"}
             canDownload={userPerms.canDownload}
-            vaultKey={vaultCryptoKey}
+            vaultKey={previewFile.viewOnly ? null : vaultCryptoKey}
+            viewOnly={previewFile.viewOnly}
           />
         )}
       </AnimatePresence>
