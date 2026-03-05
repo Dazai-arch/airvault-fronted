@@ -196,7 +196,6 @@ const TimeLimitedLinkModal = ({ vaultId, isDark, onClose }) => {
   useEffect(() => { generateLink(); }, []);
 
   const handleExpiryChange = (v) => { setExpiry(v); generateLink(v); };
-
   const copyLink = () => { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); };
 
   return (
@@ -269,8 +268,8 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
     fetchLink();
   }, [vaultId]);
 
-  const copyLink    = () => { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-  const downloadQR  = () => {
+  const copyLink   = () => { navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  const downloadQR = () => {
     const canvas = qrCanvasRef.current;
     if (!canvas) return;
     const a = document.createElement("a");
@@ -299,11 +298,6 @@ const QRCodeModal = ({ vaultId, vaultName, isDark, onClose }) => {
             <button onClick={onClose} className={`p-2 rounded-xl ${isDark ? "hover:bg-slate-700 text-gray-400" : "hover:bg-gray-100 text-gray-500"}`}><X className="w-4 h-4" /></button>
           </div>
           <div className={`flex flex-col items-center gap-4 p-5 rounded-2xl border mb-4 relative ${isDark ? "bg-slate-800/60 border-slate-700/50" : "bg-gray-50 border-gray-200"}`}>
-            {["top-0 left-0","top-0 right-0","bottom-0 left-0","bottom-0 right-0"].map((pos, i) => (
-              <div key={i} className={`absolute ${pos} w-5 h-5 pointer-events-none`}>
-                <div className={`w-full h-full ${pos.includes("right") && pos.includes("bottom") ? "border-b-2 border-r-2 rounded-br-lg" : pos.includes("right") ? "border-t-2 border-r-2 rounded-tr-lg" : pos.includes("bottom") ? "border-b-2 border-l-2 rounded-bl-lg" : "border-t-2 border-l-2 rounded-tl-lg"} border-violet-500/50`} />
-              </div>
-            ))}
             {fetching
               ? <div className="w-[220px] h-[220px] flex items-center justify-center"><Loader2 className="w-8 h-8 text-violet-400 animate-spin" /></div>
               : <RealQRCode text={link} size={220} isDark={isDark} canvasRef={qrCanvasRef} />}
@@ -391,11 +385,101 @@ const VaultIDShareModal = ({ vaultId, vaultName, isDark, onClose }) => {
   );
 };
 
+/* ─── Inline Role Selector ──────────────────────────────────────────────────
+   A small pill-style dropdown that lets the owner change viewer ↔ editor.
+   Calls PATCH /vaults/:vaultId/members/:memberId on selection.
+*/
+const RoleSelector = ({ vaultId, member, isDark, onChanged }) => {
+  const [open,    setOpen]    = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const triggerRef = useRef(null);
+  const dropRef    = useRef(null);
+
+  const ROLES = [
+    { value: "viewer", label: "Viewer", desc: "Can view files only",    color: isDark ? "text-amber-400" : "text-amber-600" },
+    { value: "editor", label: "Editor", desc: "Can upload & edit files", color: isDark ? "text-cyan-400"  : "text-cyan-600"  },
+  ];
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (!triggerRef.current?.contains(e.target) && !dropRef.current?.contains(e.target))
+        setOpen(false);
+    };
+    document.addEventListener("mousedown", handler, true);
+    return () => document.removeEventListener("mousedown", handler, true);
+  }, [open]);
+
+  const handleSelect = async (newRole) => {
+    if (newRole === member.role) { setOpen(false); return; }
+    setSaving(true);
+    setOpen(false);
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/members/${member.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({ role: newRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) { onChanged(null, data.message || "Failed to update role"); return; }
+      onChanged(newRole);
+    } catch { onChanged(null, "Network error"); }
+    finally { setSaving(false); }
+  };
+
+  const current = ROLES.find(r => r.value === member.role) || ROLES[0];
+
+  return (
+    <div className="relative flex-shrink-0">
+      <button ref={triggerRef} onClick={() => !saving && setOpen(v => !v)} disabled={saving}
+        className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold capitalize transition-all duration-200 ${
+          member.role === "editor"
+            ? isDark ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:border-cyan-400" : "bg-cyan-50 border-cyan-300 text-cyan-600 hover:border-cyan-400"
+            : isDark ? "bg-amber-500/10 border-amber-500/30 text-amber-400 hover:border-amber-400" : "bg-amber-50 border-amber-300 text-amber-600 hover:border-amber-400"
+        } disabled:opacity-60 disabled:cursor-not-allowed`}>
+        {saving
+          ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+          : <>{current.label}<ChevronDown className={`w-2.5 h-2.5 transition-transform ${open ? "rotate-180" : ""}`} /></>}
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div ref={dropRef}
+            initial={{ opacity: 0, y: -4, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.95 }} transition={{ duration: 0.12 }}
+            className={`absolute right-0 top-full mt-1.5 w-40 rounded-xl border shadow-xl z-50 overflow-hidden ${isDark ? "bg-slate-900 border-slate-700/60" : "bg-white border-gray-200"}`}>
+            <div className="h-[2px] bg-gradient-to-r from-cyan-500 to-indigo-600" />
+            {ROLES.map(role => (
+              <button key={role.value} onClick={() => handleSelect(role.value)}
+                className={`w-full text-left px-3 py-2.5 transition-colors duration-150 flex items-start gap-2 ${
+                  role.value === member.role
+                    ? isDark ? "bg-slate-800/80" : "bg-gray-50"
+                    : isDark ? "hover:bg-slate-800" : "hover:bg-gray-50"
+                }`}>
+                <div className="flex-1 min-w-0">
+                  <div className={`text-xs font-semibold flex items-center gap-1.5 ${role.color}`}>
+                    {role.label}
+                    {role.value === member.role && <CheckCircle className="w-3 h-3" />}
+                  </div>
+                  <div className={`text-[10px] ${isDark ? "text-gray-500" : "text-gray-400"}`}>{role.desc}</div>
+                </div>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 /* ══════════════════════════════════════════════════════════════════════════ */
 const VaultSharing = () => {
   const navigate        = useNavigate();
   const { isDark }      = useTheme();
-  const { activeVault } = useVault();
+  const { activeVault, updateMemberRole } = useVault();
   const { toast, showSuccess, showError, hideToast } = useToast();
 
   const [mousePosition,   setMousePosition]   = useState({ x: 0, y: 0 });
@@ -456,6 +540,16 @@ const VaultSharing = () => {
   }, [activeVault?.id]);
 
   useEffect(() => { if (activeVault?.id) { fetchMembers(); fetchInviteLink(); } }, [activeVault?.id]);
+
+  // ── Role change handler ──────────────────────────────────────────────────
+  const handleRoleChange = (memberId, newRole, errorMsg) => {
+    if (errorMsg) { showError(errorMsg); return; }
+    // Update local members list immediately
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, role: newRole } : m));
+    // Also update shared vault context so the card badge stays in sync
+    updateMemberRole(activeVault.id, memberId, newRole);
+    showSuccess(`Role updated to ${newRole}.`);
+  };
 
   const handleSendInvite = async () => {
     if (!inviteEmail.trim()) { showError("Enter a recipient email."); return; }
@@ -578,7 +672,7 @@ const VaultSharing = () => {
               {/* ─── LEFT col ─── */}
               <div className="lg:col-span-2 space-y-5 sm:space-y-6">
 
-                {/* Smart Sharing cards — exactly matching dashboard */}
+                {/* Smart Sharing */}
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className={card}>
                   <div className="h-[2px] bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 overflow-hidden rounded-t-2xl" />
                   <div className="p-5 sm:p-6">
@@ -703,8 +797,8 @@ const VaultSharing = () => {
                     </div>
                     <div className="space-y-3">
                       {[
-                        { Icon: Download, gradient: "from-violet-500 to-purple-600", title: "Block All Downloads",  desc: "Prevent any member from downloading files",                                             key: "blockAllDownloads", disabled: false },
-                        { Icon: Globe,    gradient: "from-cyan-500 to-teal-600",     title: "Device Restrictions",  desc: "Restrict vault access to registered devices only",                                     key: "deviceRestricted",  disabled: false },
+                        { Icon: Download, gradient: "from-violet-500 to-purple-600", title: "Block All Downloads",  desc: "Prevent any member from downloading files",                                              key: "blockAllDownloads", disabled: false },
+                        { Icon: Globe,    gradient: "from-cyan-500 to-teal-600",     title: "Device Restrictions",  desc: "Restrict vault access to registered devices only",                                      key: "deviceRestricted",  disabled: false },
                         { Icon: Lock,     gradient: "from-red-500 to-rose-600",      title: "Lock Vault",           desc: activeVault.hasPassword ? "Lock — members must re-authenticate" : "Set a password first to enable locking", key: "isLocked", disabled: !activeVault.hasPassword },
                       ].map(({ Icon, gradient, title, desc, key, disabled }) => (
                         <div key={key} className={`flex items-center justify-between gap-4 p-4 rounded-xl border transition-all duration-300 ${
@@ -758,7 +852,7 @@ const VaultSharing = () => {
               {/* ─── RIGHT sidebar ─── */}
               <div className="space-y-5 sm:space-y-6">
 
-                {/* Members list */}
+                {/* Members list — with inline role selector */}
                 <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.15 }} className={card}>
                   <div className="h-[2px] bg-gradient-to-r from-blue-600 to-indigo-600 overflow-hidden rounded-t-2xl" />
                   <div className="p-5">
@@ -783,7 +877,9 @@ const VaultSharing = () => {
                         <motion.div key={member.id || member.email}
                           initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.05 }}
                           className={`group flex items-center justify-between gap-2 p-3 rounded-xl border transition-all duration-300 ${isDark ? "bg-slate-900/50 border-slate-700/50 hover:border-cyan-500/30" : "bg-gray-50 border-gray-200 hover:border-cyan-300"}`}>
-                          <div className="flex items-center gap-2.5 min-w-0">
+
+                          {/* Avatar + name */}
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                               {(member.name || member.email || "?").substring(0, 2).toUpperCase()}
                             </div>
@@ -794,16 +890,27 @@ const VaultSharing = () => {
                               <p className={`text-[10px] truncate ${isDark ? "text-gray-400" : "text-gray-500"}`}>{member.email}</p>
                             </div>
                           </div>
+
+                          {/* Right side: role pill (clickable for non-owners) + pending badge + delete */}
                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize ${
-                              member.role === "owner"  ? isDark ? "bg-violet-500/10 text-violet-400" : "bg-violet-50 text-violet-600"
-                            : member.role === "editor" ? isDark ? "bg-cyan-500/10 text-cyan-400"    : "bg-cyan-50 text-cyan-600"
-                            :                           isDark ? "bg-amber-500/10 text-amber-400"   : "bg-amber-50 text-amber-600"
-                            }`}>{member.role}</span>
                             {member.status === "pending" && (
                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${isDark ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-amber-50 text-amber-600 border-amber-200"}`}>Pending</span>
                             )}
-                            {/* Owner can delete any non-owner member */}
+
+                            {/* Owner badge — not changeable */}
+                            {member.isOwner ? (
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${isDark ? "bg-violet-500/10 text-violet-400" : "bg-violet-50 text-violet-600"}`}>Owner</span>
+                            ) : (
+                              /* Inline role selector for non-owner members */
+                              <RoleSelector
+                                vaultId={activeVault.id}
+                                member={member}
+                                isDark={isDark}
+                                onChanged={(newRole, err) => handleRoleChange(member.id, newRole, err)}
+                              />
+                            )}
+
+                            {/* Delete (non-owners only) */}
                             {!member.isOwner && (
                               <button onClick={() => handleRevokeMember(member.id)} disabled={revokingId === member.id}
                                 className={`p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 ${isDark ? "text-red-400 hover:bg-red-500/20" : "text-red-500 hover:bg-red-50"}`}>

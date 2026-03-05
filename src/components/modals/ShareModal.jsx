@@ -68,15 +68,15 @@ export default function ShareModal({ file, onClose, isDark, vaultId, apiBaseUrl 
   const shareLink = `${import.meta.env.VITE_APP_URL || "http://localhost:5173"}/share/${file?.id}`;
 
   useEffect(() => {
-  console.log("ShareModal useEffect fired:", { fileId: file?.id, vaultId, apiBaseUrl });
+  
   if (!file?.id || !vaultId) {
-    console.log("Skipping - missing fileId or vaultId");
+    //console.log("Skipping - missing fileId or vaultId");
     return;
   }
   const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-  console.log("Token exists:", !!token);
+  //console.log("Token exists:", !!token);
   const url = `${apiBaseUrl}/vaults/${vaultId}/files/${file.id}/mark-shared`;
-  console.log("Fetching:", url);
+  //console.log("Fetching:", url);
   fetch(url, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}` },

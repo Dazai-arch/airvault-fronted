@@ -13,7 +13,7 @@ const API_URL = import.meta.env.VITE_API_URL ||
 
 // ─── Join Vault Modal ────────────────────────────────────────────────────────
 const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
-  const [step, setStep] = useState("input"); // input | preview | password | success
+  const [step, setStep] = useState("input");
   const [vaultId, setVaultId] = useState("");
   const [vaultInfo, setVaultInfo] = useState(null);
   const [password, setPassword] = useState("");
@@ -26,29 +26,22 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
   const handleLookup = async () => {
     const id = vaultId.trim();
     if (!id) { setError("Please enter a Vault ID"); return; }
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
       const res  = await fetch(`${API_URL}/vaults/join/${id}`);
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Vault not found"); setLoading(false); return; }
       setVaultInfo(data.vault);
       setStep("preview");
-    } catch {
-      setError("Could not reach server. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Could not reach server. Please try again."); }
+    finally { setLoading(false); }
   };
 
   const handleJoin = async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
 
     if (vaultInfo.hasPassword && step === "preview") {
-      setStep("password");
-      setLoading(false);
-      return;
+      setStep("password"); setLoading(false); return;
     }
 
     if (step === "password") {
@@ -62,11 +55,7 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
         });
         const data = await res.json();
         if (!res.ok) { setError(data.message || "Incorrect vault password"); setLoading(false); return; }
-      } catch {
-        setError("Could not reach server. Please try again.");
-        setLoading(false);
-        return;
-      }
+      } catch { setError("Could not reach server. Please try again."); setLoading(false); return; }
     }
 
     try {
@@ -77,17 +66,12 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
       });
       const data = await res.json();
       if (!res.ok && !data.alreadyOwner && !data.alreadyMember) {
-        setError(data.message || "Failed to join vault");
-        setLoading(false);
-        return;
+        setError(data.message || "Failed to join vault"); setLoading(false); return;
       }
       setStep("success");
       setTimeout(() => { onJoined(); onClose(); }, 1800);
-    } catch {
-      setError("Could not reach server. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError("Could not reach server. Please try again."); }
+    finally { setLoading(false); }
   };
 
   const inputClass = `w-full px-4 py-3 rounded-xl border text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all ${
@@ -97,14 +81,10 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div
-        className={`${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"} rounded-2xl w-full max-w-md border shadow-2xl relative overflow-hidden transition-colors duration-300`}
-        onClick={e => e.stopPropagation()}
-      >
+      <div className={`${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"} rounded-2xl w-full max-w-md border shadow-2xl relative overflow-hidden`}
+        onClick={e => e.stopPropagation()}>
         <div className="h-[3px] bg-gradient-to-r from-indigo-500 via-cyan-500 to-blue-500" />
-
         <div className="p-6 sm:p-8">
-          {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
@@ -127,32 +107,18 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
             </button>
           </div>
 
-          {/* STEP: input */}
           {step === "input" && (
             <div className="space-y-4">
               <div>
                 <label className={`block text-sm font-medium mb-2 ${isDark ? "text-slate-300" : "text-gray-700"}`}>Vault ID</label>
                 <div className="relative">
                   <Hash className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${isDark ? "text-slate-400" : "text-gray-400"}`} />
-                  <input
-                    type="text"
-                    value={vaultId}
-                    onChange={e => { setVaultId(e.target.value); setError(""); }}
-                    onKeyDown={e => e.key === "Enter" && handleLookup()}
-                    placeholder="Paste Vault ID here…"
-                    autoFocus
-                    className={`${inputClass} pl-11 font-mono text-sm`}
-                  />
+                  <input type="text" value={vaultId} onChange={e => { setVaultId(e.target.value); setError(""); }}
+                    onKeyDown={e => e.key === "Enter" && handleLookup()} placeholder="Paste Vault ID here…" autoFocus className={`${inputClass} pl-11 font-mono`} />
                 </div>
-                <p className={`text-xs mt-1.5 ${isDark ? "text-gray-500" : "text-gray-400"}`}>
-                  Ask the vault owner to share their Vault ID with you.
-                </p>
+                <p className={`text-xs mt-1.5 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Ask the vault owner to share their Vault ID with you.</p>
               </div>
-              {error && (
-                <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-300" : "bg-red-50 border-red-200 text-red-600"}`}>
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
-                </div>
-              )}
+              {error && <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-300" : "bg-red-50 border-red-200 text-red-600"}`}><AlertCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
               <div className="flex gap-3 pt-1">
                 <button onClick={onClose} className={`flex-1 py-3 rounded-xl border font-semibold text-sm transition-all ${isDark ? "bg-slate-700 border-slate-600 text-white hover:bg-slate-600" : "bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200"}`}>Cancel</button>
                 <button onClick={handleLookup} disabled={loading || !vaultId.trim()}
@@ -164,7 +130,6 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
             </div>
           )}
 
-          {/* STEP: preview */}
           {step === "preview" && vaultInfo && (
             <div className="space-y-4">
               <div className={`rounded-2xl border p-4 ${isDark ? "bg-slate-900/60 border-slate-700/60" : "bg-gray-50 border-gray-200"}`}>
@@ -192,11 +157,7 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
               <div className={`text-xs p-3 rounded-xl border ${isDark ? "bg-cyan-500/10 border-cyan-500/20 text-cyan-300" : "bg-cyan-50 border-cyan-200 text-cyan-700"}`}>
                 You'll join as a <strong>viewer</strong>. The vault owner can adjust your permissions later.
               </div>
-              {error && (
-                <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-300" : "bg-red-50 border-red-200 text-red-600"}`}>
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
-                </div>
-              )}
+              {error && <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-300" : "bg-red-50 border-red-200 text-red-600"}`}><AlertCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
               <div className="flex gap-3 pt-1">
                 <button onClick={() => { setStep("input"); setError(""); }} className={`flex-1 py-3 rounded-xl border font-semibold text-sm transition-all ${isDark ? "bg-slate-700 border-slate-600 text-white hover:bg-slate-600" : "bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200"}`}>Back</button>
                 <button onClick={handleJoin} disabled={loading}
@@ -208,7 +169,6 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
             </div>
           )}
 
-          {/* STEP: password */}
           {step === "password" && (
             <div className="space-y-4">
               <div className={`rounded-xl border p-3 flex items-center gap-3 ${isDark ? "bg-slate-700/40 border-slate-600/40" : "bg-gray-50 border-gray-200"}`}>
@@ -219,27 +179,15 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
                 <label className={`block text-sm font-medium mb-2 ${isDark ? "text-slate-300" : "text-gray-700"}`}>Vault Password</label>
                 <div className="relative">
                   <Lock className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${isDark ? "text-slate-400" : "text-gray-400"}`} />
-                  <input
-                    type={showPw ? "text" : "password"}
-                    value={password}
-                    onChange={e => { setPassword(e.target.value); setError(""); }}
-                    onKeyDown={e => e.key === "Enter" && handleJoin()}
-                    placeholder="Enter vault password"
-                    autoFocus
-                    className={`${inputClass} pl-11 pr-11`}
-                  />
-                  <button type="button" onClick={() => setShowPw(v => !v)}
-                    className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDark ? "text-slate-400 hover:text-white" : "text-gray-400 hover:text-gray-700"} transition-colors`}>
+                  <input type={showPw ? "text" : "password"} value={password} onChange={e => { setPassword(e.target.value); setError(""); }}
+                    onKeyDown={e => e.key === "Enter" && handleJoin()} placeholder="Enter vault password" autoFocus className={`${inputClass} pl-11 pr-11`} />
+                  <button type="button" onClick={() => setShowPw(v => !v)} className={`absolute right-4 top-1/2 -translate-y-1/2 ${isDark ? "text-slate-400 hover:text-white" : "text-gray-400 hover:text-gray-700"} transition-colors`}>
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
                 {vaultInfo?.passwordHint && <p className={`text-xs mt-1.5 ${isDark ? "text-gray-500" : "text-gray-400"}`}>Hint: <span className="italic">{vaultInfo.passwordHint}</span></p>}
               </div>
-              {error && (
-                <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-300" : "bg-red-50 border-red-200 text-red-600"}`}>
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
-                </div>
-              )}
+              {error && <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs ${isDark ? "bg-red-500/10 border-red-500/20 text-red-300" : "bg-red-50 border-red-200 text-red-600"}`}><AlertCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
               <div className="flex gap-3 pt-1">
                 <button onClick={() => { setStep("preview"); setError(""); setPassword(""); }} className={`flex-1 py-3 rounded-xl border font-semibold text-sm transition-all ${isDark ? "bg-slate-700 border-slate-600 text-white hover:bg-slate-600" : "bg-gray-100 border-gray-200 text-gray-700 hover:bg-gray-200"}`}>Back</button>
                 <button onClick={handleJoin} disabled={loading || !password}
@@ -251,7 +199,6 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
             </div>
           )}
 
-          {/* STEP: success */}
           {step === "success" && (
             <div className="text-center py-4">
               <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -273,10 +220,9 @@ const JoinVaultModal = ({ isDark, onClose, onJoined }) => {
 
 // ─── Main VaultSelector ──────────────────────────────────────────────────────
 const VaultSelector = () => {
-  const { setActiveVault } = useVault();
+  const { setActiveVault, vaults, sharedVaults, fetchVaults } = useVault();
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
-  const [vaults, setVaults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteModal, setDeleteModal] = useState(null);
   const [unlockModal, setUnlockModal] = useState(null);
@@ -289,24 +235,21 @@ const VaultSelector = () => {
 
   const showToast = (message, type = "success") => setToast({ message, type });
 
-  useEffect(() => { fetchVaults(); }, []);
-
-  const fetchVaults = async () => {
-    try {
-      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
-      const response = await fetch(`${API_URL}/vaults`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      });
-      const data = await response.json();
-      if (response.ok) setVaults(data.vaults || []);
-      else showToast("Failed to load vaults", "error");
-    } catch { showToast("Error loading vaults", "error"); }
-    finally { setLoading(false); }
-  };
+  // Use the context's vaults — just track loading separately
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      await fetchVaults();
+      setLoading(false);
+    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openVault = async (vault) => {
-    if (vault.hasPassword) { setUnlockModal({ vault }); setUnlockPassword(""); setShowUnlockPassword(false); return; }
+    if (vault.hasPassword) {
+      setUnlockModal({ vault }); setUnlockPassword(""); setShowUnlockPassword(false); return;
+    }
     setActiveVault(vault);
     navigate("/vault/dashboard");
   };
@@ -324,9 +267,7 @@ const VaultSelector = () => {
       const data = await response.json();
       if (!response.ok) { showToast(data.message || "Incorrect password", "error"); setUnlockPassword(""); return; }
       setActiveVault(unlockModal.vault);
-      setUnlockModal(null);
-      setUnlockPassword("");
-      setShowUnlockPassword(false);
+      setUnlockModal(null); setUnlockPassword(""); setShowUnlockPassword(false);
       navigate("/vault/dashboard");
     } catch { showToast("Error verifying password", "error"); }
   };
@@ -334,8 +275,7 @@ const VaultSelector = () => {
   const handleDeleteClick = (e, vault) => {
     e.stopPropagation();
     setDeleteModal({ vault, step: "confirm" });
-    setDeleteInput("");
-    setPasswordInput("");
+    setDeleteInput(""); setPasswordInput("");
   };
 
   const handleDeleteConfirm = () => {
@@ -369,8 +309,11 @@ const VaultSelector = () => {
         credentials: "include",
       });
       const data = await response.json();
-      if (response.ok) { showToast(`Vault "${deleteModal.vault.name}" deleted successfully`, "success"); setDeleteModal(null); fetchVaults(); }
-      else showToast(data.message || "Failed to delete vault", "error");
+      if (response.ok) {
+        showToast(`Vault "${deleteModal.vault.name}" deleted successfully`, "success");
+        setDeleteModal(null);
+        fetchVaults();
+      } else showToast(data.message || "Failed to delete vault", "error");
     } catch { showToast("Error deleting vault", "error"); }
   };
 
@@ -379,10 +322,13 @@ const VaultSelector = () => {
   if (loading) {
     return (
       <div className={`min-h-screen ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"} flex items-center justify-center`}>
-        <div className={isDark ? "text-white text-xl" : "text-gray-900 text-xl"}>Loading vaults...</div>
+        <div className={isDark ? "text-white text-xl" : "text-gray-900 text-xl"}>Loading vaults…</div>
       </div>
     );
   }
+
+  const hasOwned  = vaults.length > 0;
+  const hasShared = sharedVaults.length > 0;
 
   return (
     <div className={`h-screen overflow-hidden ${isDark ? "bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900" : "bg-gradient-to-br from-gray-50 via-white to-gray-100"} relative transition-colors duration-500`}>
@@ -403,6 +349,7 @@ const VaultSelector = () => {
           : <Moon className="w-5 h-5 text-indigo-600 group-hover:-rotate-12 transition-transform duration-500" />}
       </button>
 
+      {/* Ambient blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
         <div className={`absolute top-1/4 -left-1/4 w-96 h-96 ${isDark ? "bg-cyan-500/10" : "bg-cyan-500/5"} rounded-full blur-3xl animate-pulse`} />
         <div className={`absolute bottom-1/4 -right-1/4 w-96 h-96 ${isDark ? "bg-blue-600/10" : "bg-blue-600/5"} rounded-full blur-3xl animate-pulse`} style={{ animationDelay: "1s" }} />
@@ -436,12 +383,10 @@ const VaultSelector = () => {
                   className={`w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl ${isDark ? "bg-slate-700 hover:bg-slate-600 border-slate-600" : "bg-white hover:bg-gray-50 border-gray-200"} border font-semibold ${isDark ? "text-white" : "text-gray-900"} shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 text-sm`}>
                   <Shield className="w-4 h-4" /><span>Dashboard</span>
                 </button>
-
                 <button onClick={() => setShowJoinModal(true)}
                   className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 via-cyan-500 to-blue-500 hover:opacity-90 text-white font-semibold shadow-lg shadow-indigo-500/25 hover:shadow-xl transition-all duration-300 hover:scale-105 text-sm">
                   <Users className="w-4 h-4" /><span>Join Vault</span>
                 </button>
-
                 <button onClick={() => navigate("/createvaults")}
                   className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 via-blue-600 to-indigo-600 hover:from-cyan-400 hover:via-blue-500 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-xl transition-all duration-300 hover:scale-105 text-sm">
                   <Plus className="w-4 h-4" /><span>New Vault</span>
@@ -450,8 +395,8 @@ const VaultSelector = () => {
             </div>
           </div>
 
-          {/* Vaults Grid */}
-          {vaults.length === 0 ? (
+          {/* Empty state */}
+          {!hasOwned && !hasShared ? (
             <div className="text-center py-16 sm:py-20">
               <div className={`inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-full ${isDark ? "bg-slate-800/50 border-slate-700/50" : "bg-gray-100 border-gray-200"} border mb-6`}>
                 <Shield className={`w-8 h-8 sm:w-10 sm:h-10 ${isDark ? "text-slate-400" : "text-gray-400"}`} />
@@ -470,65 +415,84 @@ const VaultSelector = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+            <div className="space-y-10">
 
-              {/* Join card — always first in grid */}
-              <div onClick={() => setShowJoinModal(true)}
-                className={`group relative ${isDark ? "bg-slate-800/30 border-slate-700/40 hover:border-indigo-500/50" : "bg-white/60 border-gray-200 hover:border-indigo-400/50"} backdrop-blur-xl border-2 border-dashed rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-indigo-500/20 flex flex-col items-center justify-center min-h-[168px] gap-3`}>
-                <div className={`p-3 rounded-xl ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"} border group-hover:scale-110 transition-transform duration-300`}>
-                  <Users className={`w-6 h-6 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
+              {/* ── My Vaults ── */}
+              <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>My Vaults</h2>
+                  {hasOwned && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isDark ? "bg-slate-700 text-gray-300" : "bg-gray-100 text-gray-600"}`}>{vaults.length}</span>
+                  )}
                 </div>
-                <div className="text-center">
-                  <p className={`font-semibold text-sm ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>Join Shared Vault</p>
-                  <p className={`text-xs mt-0.5 ${isDark ? "text-slate-500" : "text-gray-400"}`}>Paste a Vault ID</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                  {/* Join card */}
+                  <div onClick={() => setShowJoinModal(true)}
+                    className={`group relative ${isDark ? "bg-slate-800/30 border-slate-700/40 hover:border-indigo-500/50" : "bg-white/60 border-gray-200 hover:border-indigo-400/50"} backdrop-blur-xl border-2 border-dashed rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-indigo-500/20 flex flex-col items-center justify-center min-h-[168px] gap-3`}>
+                    <div className={`p-3 rounded-xl ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"} border group-hover:scale-110 transition-transform duration-300`}>
+                      <Users className={`w-6 h-6 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
+                    </div>
+                    <div className="text-center">
+                      <p className={`font-semibold text-sm ${isDark ? "text-indigo-300" : "text-indigo-700"}`}>Join Shared Vault</p>
+                      <p className={`text-xs mt-0.5 ${isDark ? "text-slate-500" : "text-gray-400"}`}>Paste a Vault ID</p>
+                    </div>
+                  </div>
+
+                  {/* New vault card */}
+                  <div onClick={() => navigate("/createvaults")}
+                    className={`group relative ${isDark ? "bg-slate-800/30 border-slate-700/40 hover:border-cyan-500/50" : "bg-white/60 border-gray-200 hover:border-cyan-400/50"} backdrop-blur-xl border-2 border-dashed rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-cyan-500/20 flex flex-col items-center justify-center min-h-[168px] gap-3`}>
+                    <div className={`p-3 rounded-xl ${isDark ? "bg-cyan-500/10 border-cyan-500/20" : "bg-cyan-50 border-cyan-200"} border group-hover:scale-110 transition-transform duration-300`}>
+                      <Plus className={`w-6 h-6 ${isDark ? "text-cyan-400" : "text-cyan-600"}`} />
+                    </div>
+                    <div className="text-center">
+                      <p className={`font-semibold text-sm ${isDark ? "text-cyan-300" : "text-cyan-700"}`}>New Vault</p>
+                      <p className={`text-xs mt-0.5 ${isDark ? "text-slate-500" : "text-gray-400"}`}>Create encrypted vault</p>
+                    </div>
+                  </div>
+
+                  {vaults.map((vault) => (
+                    <OwnedVaultCard
+                      key={vault.id}
+                      vault={vault}
+                      isDark={isDark}
+                      onOpen={() => openVault(vault)}
+                      onDelete={(e) => handleDeleteClick(e, vault)}
+                    />
+                  ))}
                 </div>
               </div>
 
-              {vaults.map((vault) => (
-                <div key={vault.id}
-                  className={`group relative ${isDark ? "bg-slate-800/50 border-slate-700/50 hover:border-cyan-500/50" : "bg-white/80 border-gray-200 hover:border-cyan-500/50"} backdrop-blur-xl border rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 ${isDark ? "hover:shadow-2xl hover:shadow-cyan-500/20" : "hover:shadow-2xl hover:shadow-cyan-500/30"} overflow-hidden`}>
-                  <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/0 via-transparent to-blue-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                  <div className="relative" onClick={() => openVault(vault)}>
-                    <div className="flex items-start justify-between mb-4">
-                      <div className={`p-3 rounded-xl ${isDark ? "bg-slate-700/50 border-slate-600/50" : "bg-gray-100 border-gray-200"} border group-hover:scale-110 transition-transform duration-300`}>
-                        {vault.hasPassword
-                          ? <Lock     className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? "text-cyan-400" : "text-cyan-600"}`} />
-                          : <LockOpen className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? "text-slate-400" : "text-gray-400"}`} />}
-                      </div>
-                      <div className={`px-2.5 py-1 rounded-full text-xs font-semibold ${vault.hasPassword ? isDark ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : "bg-cyan-50 text-cyan-700 border border-cyan-200" : isDark ? "bg-slate-500/10 text-slate-400 border border-slate-500/20" : "bg-gray-100 text-gray-600 border border-gray-200"}`}>
-                        {vault.hasPassword ? "Protected" : "No Password"}
-                      </div>
-                    </div>
-                    <h3 className={`text-lg sm:text-xl font-semibold ${isDark ? "text-white" : "text-gray-900"} mb-2 truncate pr-8`}>{vault.name}</h3>
-                    <div className={`flex items-center justify-between text-xs sm:text-sm ${isDark ? "text-slate-400" : "text-gray-600"}`}>
-                      <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        {vault.fileCount || 0} files
-                      </span>
-                      <span className={`text-xs ${isDark ? "text-slate-500" : "text-gray-400"}`}>{new Date(vault.createdAt).toLocaleDateString()}</span>
-                    </div>
+              {/* ── Shared With Me ── */}
+              {hasShared && (
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <h2 className={`text-base font-bold ${isDark ? "text-white" : "text-gray-900"}`}>Shared With Me</h2>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${isDark ? "bg-indigo-500/20 text-indigo-300" : "bg-indigo-50 text-indigo-600"}`}>{sharedVaults.length}</span>
+                    <span className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}>— vaults others have given you access to</span>
                   </div>
-                  <button onClick={(e) => handleDeleteClick(e, vault)}
-                    className={`absolute top-4 right-4 p-2 rounded-lg ${isDark ? "bg-red-500/10 border-red-500/20 hover:bg-red-500/20" : "bg-red-50 border-red-200 hover:bg-red-100"} border text-red-400 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10`}>
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                    {sharedVaults.map((vault) => (
+                      <SharedVaultCard
+                        key={vault.id}
+                        vault={vault}
+                        isDark={isDark}
+                        onOpen={() => openVault(vault)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Join Vault Modal */}
+      {/* Modals */}
       {showJoinModal && (
-        <JoinVaultModal
-          isDark={isDark}
-          onClose={() => setShowJoinModal(false)}
-          onJoined={() => { fetchVaults(); showToast("Vault joined successfully!", "success"); }}
-        />
+        <JoinVaultModal isDark={isDark} onClose={() => setShowJoinModal(false)}
+          onJoined={() => { fetchVaults(); showToast("Vault joined successfully!", "success"); }} />
       )}
 
-      {/* Unlock Vault Modal */}
       {unlockModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
           <div className={`${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"} rounded-2xl p-6 sm:p-8 max-w-md w-full border shadow-2xl relative`}>
@@ -573,7 +537,6 @@ const VaultSelector = () => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {deleteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 sm:p-6">
           <div className={`${isDark ? "bg-slate-800 border-slate-700" : "bg-white border-gray-200"} rounded-2xl p-6 sm:p-8 max-w-md w-full border shadow-2xl relative`}>
@@ -630,5 +593,84 @@ const VaultSelector = () => {
     </div>
   );
 };
+
+// ─── Owned vault card ────────────────────────────────────────────────────────
+const OwnedVaultCard = ({ vault, isDark, onOpen, onDelete }) => (
+  <div
+    className={`group relative ${isDark ? "bg-slate-800/50 border-slate-700/50 hover:border-cyan-500/50" : "bg-white/80 border-gray-200 hover:border-cyan-500/50"} backdrop-blur-xl border rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 ${isDark ? "hover:shadow-2xl hover:shadow-cyan-500/20" : "hover:shadow-2xl hover:shadow-cyan-500/30"} overflow-hidden`}
+    onClick={onOpen}
+  >
+    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/0 via-transparent to-blue-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+    <div className="relative">
+      <div className="flex items-start justify-between mb-4">
+        <div className={`p-3 rounded-xl ${isDark ? "bg-slate-700/50 border-slate-600/50" : "bg-gray-100 border-gray-200"} border group-hover:scale-110 transition-transform duration-300`}>
+          {vault.hasPassword
+            ? <Lock     className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? "text-cyan-400" : "text-cyan-600"}`} />
+            : <LockOpen className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? "text-slate-400" : "text-gray-400"}`} />}
+        </div>
+        <div className={`px-2.5 py-1 rounded-full text-xs font-semibold ${vault.hasPassword ? isDark ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : "bg-cyan-50 text-cyan-700 border border-cyan-200" : isDark ? "bg-slate-500/10 text-slate-400 border border-slate-500/20" : "bg-gray-100 text-gray-600 border border-gray-200"}`}>
+          {vault.hasPassword ? "Protected" : "No Password"}
+        </div>
+      </div>
+      <h3 className={`text-lg sm:text-xl font-semibold ${isDark ? "text-white" : "text-gray-900"} mb-2 truncate pr-8`}>{vault.name}</h3>
+      <div className={`flex items-center justify-between text-xs sm:text-sm ${isDark ? "text-slate-400" : "text-gray-600"}`}>
+        <span className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          {vault.fileCount || 0} files
+        </span>
+        <span className={`text-xs ${isDark ? "text-slate-500" : "text-gray-400"}`}>{new Date(vault.createdAt).toLocaleDateString()}</span>
+      </div>
+    </div>
+    <button
+      onClick={onDelete}
+      className={`absolute top-4 right-4 p-2 rounded-lg ${isDark ? "bg-red-500/10 border-red-500/20 hover:bg-red-500/20" : "bg-red-50 border-red-200 hover:bg-red-100"} border text-red-400 opacity-0 group-hover:opacity-100 transition-all duration-200 z-10`}>
+      <Trash2 className="w-4 h-4" />
+    </button>
+  </div>
+);
+
+// ─── Shared vault card ───────────────────────────────────────────────────────
+const SharedVaultCard = ({ vault, isDark, onOpen }) => (
+  <div
+    onClick={onOpen}
+    className={`group relative ${isDark ? "bg-slate-800/50 border-indigo-500/20 hover:border-indigo-400/50" : "bg-white/80 border-indigo-200 hover:border-indigo-400/50"} backdrop-blur-xl border rounded-2xl p-5 sm:p-6 cursor-pointer transition-all duration-300 hover:scale-105 ${isDark ? "hover:shadow-2xl hover:shadow-indigo-500/20" : "hover:shadow-2xl hover:shadow-indigo-500/20"} overflow-hidden`}
+  >
+    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 via-transparent to-purple-600/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+    <div className="relative">
+      <div className="flex items-start justify-between mb-4">
+        <div className={`p-3 rounded-xl ${isDark ? "bg-indigo-500/10 border-indigo-500/20" : "bg-indigo-50 border-indigo-200"} border group-hover:scale-110 transition-transform duration-300`}>
+          {vault.hasPassword
+            ? <Lock  className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />
+            : <Users className={`w-5 h-5 sm:w-6 sm:h-6 ${isDark ? "text-indigo-400" : "text-indigo-600"}`} />}
+        </div>
+        {/* Role badge */}
+        <div className={`px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
+          vault.role === "editor"
+            ? isDark ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : "bg-cyan-50 text-cyan-700 border border-cyan-200"
+            : isDark ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/20" : "bg-indigo-50 text-indigo-700 border border-indigo-200"
+        }`}>
+          {vault.role || "viewer"}
+        </div>
+      </div>
+
+      <h3 className={`text-lg sm:text-xl font-semibold ${isDark ? "text-white" : "text-gray-900"} mb-1 truncate`}>{vault.name}</h3>
+
+      {vault.description && (
+        <p className={`text-xs truncate mb-2 ${isDark ? "text-gray-400" : "text-gray-500"}`}>{vault.description}</p>
+      )}
+
+      <div className={`flex items-center justify-between text-xs ${isDark ? "text-slate-400" : "text-gray-500"}`}>
+        <span className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${isDark ? "bg-indigo-500/10 border-indigo-500/20 text-indigo-300" : "bg-indigo-50 border-indigo-200 text-indigo-600"}`}>
+          <Users className="w-3 h-3" /> Shared
+        </span>
+        {vault.joinedAt && (
+          <span className={`text-[10px] ${isDark ? "text-slate-500" : "text-gray-400"}`}>
+            Joined {new Date(vault.joinedAt).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+    </div>
+  </div>
+);
 
 export default VaultSelector;
