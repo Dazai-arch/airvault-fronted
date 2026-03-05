@@ -1514,19 +1514,12 @@ app.post("/api/vaults/join/:vaultId", authenticateToken, async (req, res) => {
 
 
 // GET SINGLE VAULT
-app.get("/api/vaults/:vaultId", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId } = req.params;
 
-    const vault = await Vault.findOne({
-      _id: vaultId,
-      userId: req.user.userId,
-      isActive: true,
-    });
-
-    if (!vault) {
-      return res.status(404).json({ message: "Vault not found" });
-    }
+    // req.vault already verified by checkVaultAccess
+    const vault = req.vault;
 
     res.status(200).json({
       vault: {
@@ -1539,6 +1532,10 @@ app.get("/api/vaults/:vaultId", authenticateToken, async (req, res) => {
         lastAccessed: vault.lastAccessed,
         fileCount: vault.fileCount,
         totalSize: vault.totalSize,
+        isOwner: req.isOwner,
+        userPermissions: req.isOwner
+          ? { view: true, upload: true, edit: true, delete: true, share: true, canDownload: true }
+          : { ...(req.vaultShare?.permissions || { view: true }), canDownload: req.vaultShare?.canDownload || false },
       },
     });
   } catch (error) {
@@ -1560,14 +1557,22 @@ app.post(
         return res.status(400).json({ message: "Password is required" });
       }
 
-      const vault = await Vault.findOne({
-        _id: vaultId,
-        userId: req.user.userId,
-        isActive: true,
-      });
+      // Allow owner OR active shared member — just look up vault by id
+      const vault = await Vault.findOne({ _id: vaultId, isActive: true });
 
       if (!vault) {
         return res.status(404).json({ message: "Vault not found" });
+      }
+
+      // Verify user has access (owner OR active share)
+      const isOwner = vault.userId.toString() === req.user.userId;
+      if (!isOwner) {
+        const user = await User.findById(req.user.userId).select("email");
+        const share = await VaultShare.findOne({
+          vaultId, status: "active",
+          $or: [{ userId: req.user.userId }, { email: user.email }],
+        });
+        if (!share) return res.status(403).json({ message: "Access denied" });
       }
 
       if (!vault.hasPassword) {
@@ -1882,7 +1887,7 @@ app.delete("/api/vaults/:vaultId/files/:fileId",
     const { vaultId, fileId } = req.params;
 
     const file = await VaultFile.findOne({
-      _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
+      _id: fileId, vaultId, isDeleted: false,
     });
     if (!file) return res.status(404).json({ message: "File not found" });
 
@@ -1960,13 +1965,12 @@ const fileSchema = new mongoose.Schema({
 // 2. GET /api/vaults/:vaultId/storage
 //    Returns real-time storage usage for the vault.
 // ════════════════════════════════════════════════════════════
-app.get("/api/vaults/:vaultId/storage", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/storage", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId } = req.params;
 
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
+    // req.vault already verified by checkVaultAccess
+    const vault = req.vault;
     const storageUsed = await getVaultStorageUsed(vaultId);
     const storageLimit = vault.storageLimitBytes || VAULT_STORAGE_LIMIT;
 
@@ -1989,7 +1993,7 @@ app.get("/api/vaults/:vaultId/storage", authenticateToken, async (req, res) => {
 // ════════════════════════════════════════════════════════════
 app.post("/api/vaults/:vaultId/files/upload",
   authenticateToken,
-  checkVaultAccess("editor"),
+  checkVaultAccess("viewer"),
   checkPermission("upload"),
   vaultUpload.single("file"),
   async (req, res) => {
@@ -2000,8 +2004,8 @@ app.post("/api/vaults/:vaultId/files/upload",
 
       if (!req.file) return res.status(400).json({ message: "No file provided" });
 
-      const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-      if (!vault) return res.status(404).json({ message: "Vault not found" });
+      // req.vault is already verified by checkVaultAccess — use it directly
+      const vault = req.vault;
 
       const storageUsed = await getVaultStorageUsed(vaultId);
       if (storageUsed + req.file.size > (vault.storageLimitBytes || VAULT_STORAGE_LIMIT)) {
@@ -2095,8 +2099,9 @@ app.get("/api/vaults/:vaultId/files/:fileId/download",
     try {
       const { vaultId, fileId } = req.params;
 
+      // ← no userId filter — shared members can download if checkDownloadPermission passed
       const file = await VaultFile.findOne({
-        _id: fileId, vaultId, userId: req.user.userId, isDeleted: false,
+        _id: fileId, vaultId, isDeleted: false,
       });
       if (!file) return res.status(404).json({ message: "File not found" });
 
@@ -2452,6 +2457,8 @@ const buildShareEmail = ({ senderName, senderEmail, fileName, fileType, fileSize
 app.post(
   "/api/vaults/:vaultId/files/:fileId/share",
   authenticateToken,
+  checkVaultAccess("viewer"),
+  checkPermission("share"),
   async (req, res) => {
     try {
       const { vaultId, fileId }     = req.params;
@@ -2467,11 +2474,9 @@ app.post(
       if (badEmails.length)
         return res.status(400).json({ message: `Invalid email(s): ${badEmails.join(", ")}` });
 
-      // ── Verify vault + file ownership ────────────────────────────────────────
-      const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-      if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-      const file = await VaultFile.findOne({ _id: fileId, vaultId, userId: req.user.userId, isDeleted: false });
+      // ── Verify vault access (req.vault from checkVaultAccess) + file existence ─
+      const vault = req.vault;
+      const file = await VaultFile.findOne({ _id: fileId, vaultId, isDeleted: false });
       if (!file) return res.status(404).json({ message: "File not found" });
 
       // ── Shareability check ───────────────────────────────────────────────────
@@ -3015,7 +3020,7 @@ const formatDateTime = (date) => {
 //    Full vault details for the Details page.
 //    Returns: vault info + file stats + folder count + owner info
 // ============================================================
-app.get("/api/vaults/:vaultId/details", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/details", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId } = req.params;
 
@@ -3023,23 +3028,17 @@ app.get("/api/vaults/:vaultId/details", authenticateToken, async (req, res) => {
       return res.status(400).json({ message: "Invalid vault ID" });
     }
 
-    // Fetch vault
-    const vault = await Vault.findOne({
-      _id: vaultId,
-      userId: req.user.userId,
-      isActive: true,
-    });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
+    // req.vault already verified by checkVaultAccess
+    const vault = req.vault;
 
     // Fetch owner info
-    const owner = await User.findById(req.user.userId).select("fullName email");
+    const owner = await User.findById(vault.userId).select("fullName email");
 
-    // Aggregate file stats
+    // Aggregate file stats — no userId filter, covers all files in vault
     const fileStats = await VaultFile.aggregate([
       {
         $match: {
           vaultId: new mongoose.Types.ObjectId(vaultId),
-          userId:  new mongoose.Types.ObjectId(req.user.userId),
           isDeleted: false,
         },
       },
@@ -3062,20 +3061,18 @@ app.get("/api/vaults/:vaultId/details", authenticateToken, async (req, res) => {
       sharedCount: 0, totalViews: 0, totalDownloads: 0, lastUpload: null,
     };
 
-    // Folder count
+    // Folder count — no userId filter
     const folderCount = await VaultFolder.countDocuments({
       vaultId,
-      userId: req.user.userId,
       isDeleted: false,
       folderId: { $ne: "root" },
     });
 
-    // Category breakdown
+    // Category breakdown — no userId filter
     const categoryStats = await VaultFile.aggregate([
       {
         $match: {
           vaultId:   new mongoose.Types.ObjectId(vaultId),
-          userId:    new mongoose.Types.ObjectId(req.user.userId),
           isDeleted: false,
         },
       },
@@ -3102,7 +3099,7 @@ app.get("/api/vaults/:vaultId/details", authenticateToken, async (req, res) => {
         passwordHint: vault.passwordHint || null,
         isLocked:     vault.hasPassword,
         access:       vault.hasPassword ? "Password Protected" : "Private",
-        permissions:  ["Owner"],
+        permissions:  req.isOwner ? ["Owner"] : [req.vaultRole || "viewer"],
         encryption:   "AES-256",
         tags:         vault.tags || [],
         created:      formatDate(vault.createdAt),
@@ -3115,6 +3112,10 @@ app.get("/api/vaults/:vaultId/details", authenticateToken, async (req, res) => {
         name:  owner?.fullName || "Unknown",
         email: owner?.email    || "",
       },
+      isOwner: req.isOwner,
+      userPermissions: req.isOwner
+        ? { view: true, upload: true, edit: true, delete: true, share: true, canDownload: true }
+        : req.vaultShare?.permissions || { view: true },
       stats: {
         fileCount:      stats.fileCount,
         folderCount,
@@ -3149,7 +3150,7 @@ app.get("/api/vaults/:vaultId/details", authenticateToken, async (req, res) => {
 // 2. GET /api/vaults/:vaultId/activity
 //    Recent activity log for the vault (last 20 events).
 // ============================================================
-app.get("/api/vaults/:vaultId/activity", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/activity", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId } = req.params;
 
@@ -3157,17 +3158,10 @@ app.get("/api/vaults/:vaultId/activity", authenticateToken, async (req, res) => 
       return res.status(400).json({ message: "Invalid vault ID" });
     }
 
-    const vault = await Vault.findOne({
-      _id: vaultId,
-      userId: req.user.userId,
-      isActive: true,
-    });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    // Get recent files uploaded/modified as activity
+    // req.vault already verified by checkVaultAccess
+    // Get recent files — no userId filter
     const recentFiles = await VaultFile.find({
       vaultId,
-      userId: req.user.userId,
       isDeleted: false,
     })
       .sort({ uploadedAt: -1 })
