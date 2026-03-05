@@ -1752,15 +1752,13 @@ app.get("/api/vaults/:vaultId/zk-salt", authenticateToken, async (req, res) => {
 });
 
 // GET ALL FILES IN VAULT
-app.get("/api/vaults/:vaultId/files", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/files", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId } = req.params;
     const { folderId } = req.query;
 
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    const query = { vaultId, userId: req.user.userId, isDeleted: false };
+    // ✅ vault is already verified by checkVaultAccess — no userId filter needed
+    const query = { vaultId, isDeleted: false }; // ← remove userId filter
     if (folderId) query.folderId = folderId;
 
     const files = await VaultFile.find(query).sort({ uploadedAt: -1 });
@@ -1787,7 +1785,11 @@ app.get("/api/vaults/:vaultId/files", authenticateToken, async (req, res) => {
 });
 
 // DELETE FILE
-app.delete("/api/vaults/:vaultId/files/:fileId", authenticateToken, async (req, res) => {
+app.delete("/api/vaults/:vaultId/files/:fileId",
+  authenticateToken,
+  checkVaultAccess("viewer"),
+  checkPermission("delete"),
+  async (req, res) => {
   try {
     const { vaultId, fileId } = req.params;
 
@@ -1964,9 +1966,10 @@ app.get("/api/vaults/:vaultId/storage", authenticateToken, async (req, res) => {
 // 3. POST /api/vaults/:vaultId/files/upload   (ZK-aware)
 //    Accepts encrypted or plain file + metadata.
 // ════════════════════════════════════════════════════════════
-app.post(
-  "/api/vaults/:vaultId/files/upload",
+app.post("/api/vaults/:vaultId/files/upload",
   authenticateToken,
+  checkVaultAccess("editor"),
+  checkPermission("upload"),
   vaultUpload.single("file"),
   async (req, res) => {
     try {
@@ -2063,9 +2066,10 @@ await createVaultAuditLog(
 //    For encrypted files: returns URL so client can fetch + decrypt.
 //    For plain files: streams or returns presigned URL.
 // ════════════════════════════════════════════════════════════
-app.get(
-  "/api/vaults/:vaultId/files/:fileId/download",
+app.get("/api/vaults/:vaultId/files/:fileId/download",
   authenticateToken,
+  checkVaultAccess("viewer"),
+  checkDownloadPermission,
   async (req, res) => {
     try {
       const { vaultId, fileId } = req.params;
@@ -2708,19 +2712,17 @@ async function ensureRoot(vaultId, userId, vaultName) {
 // ── FOLDER ROUTES (keep only these, remove all other folder route blocks) ────
 
 // GET all folders flat
-app.get("/api/vaults/:vaultId/folders", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/folders", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(vaultId))
       return res.status(400).json({ message: "Invalid vault ID" });
 
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    await ensureRoot(vaultId, req.user.userId, vault.name);
+    // req.vault is already verified by checkVaultAccess
+    await ensureRoot(vaultId, req.vault.userId, req.vault.name);
 
     const folders = await VaultFolder.find({
-      vaultId, userId: req.user.userId, isDeleted: false,
+      vaultId, isDeleted: false,  // ← removed userId filter
     }).sort({ name: 1 });
 
     res.json({ folders: folders.map(folderToJSON) });
@@ -2731,34 +2733,30 @@ app.get("/api/vaults/:vaultId/folders", authenticateToken, async (req, res) => {
 });
 
 // GET single folder + children + files
-app.get("/api/vaults/:vaultId/folders/:folderId", authenticateToken, async (req, res) => {
+app.get("/api/vaults/:vaultId/folders/:folderId", authenticateToken, checkVaultAccess("viewer"), async (req, res) => {
   try {
     const { vaultId, folderId } = req.params;
     if (!mongoose.Types.ObjectId.isValid(vaultId))
       return res.status(400).json({ message: "Invalid vault ID" });
 
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    if (folderId === "root") await ensureRoot(vaultId, req.user.userId, vault.name);
+    if (folderId === "root") await ensureRoot(vaultId, req.vault.userId, req.vault.name);
 
     const folder = await VaultFolder.findOne({
-      vaultId, userId: req.user.userId, folderId, isDeleted: false,
+      vaultId, folderId, isDeleted: false,  // ← removed userId filter
     });
     if (!folder) return res.status(404).json({ message: "Folder not found" });
 
     const [childFolders, files] = await Promise.all([
-      VaultFolder.find({ vaultId, userId: req.user.userId, parentId: folderId, isDeleted: false }).sort({ name: 1 }),
-      VaultFile.find({ vaultId, userId: req.user.userId, folderId, isDeleted: false }).sort({ uploadedAt: -1 }),
+      VaultFolder.find({ vaultId, parentId: folderId, isDeleted: false }).sort({ name: 1 }),  // ← removed userId
+      VaultFile.find({ vaultId, folderId, isDeleted: false }).sort({ uploadedAt: -1 }),        // ← removed userId
     ]);
 
-    // File counts per child folder
     const childIds = childFolders.map(f => f.folderId);
     const countAgg = childIds.length
       ? await VaultFile.aggregate([
           { $match: {
               vaultId:   new mongoose.Types.ObjectId(vaultId),
-              userId:    new mongoose.Types.ObjectId(req.user.userId),
+              // ← removed userId filter
               folderId:  { $in: childIds },
               isDeleted: false,
           }},
@@ -3704,11 +3702,12 @@ const checkVaultAccess = (requiredRole = "viewer") => async (req, res, next) => 
     }
 
     // Check shared access
-    const share = await VaultShare.findOne({
-      vaultId,
-      userId,
-      status: "active",
-    });
+    const user = await User.findById(userId).select("email");
+const share = await VaultShare.findOne({
+  vaultId,
+  status: "active",
+  $or: [{ userId }, { email: user.email }],
+});
 
     if (!share) {
       await createVaultAuditLog(vaultId, userId, req.user.email, "Unauthorized Access", req, null, "blocked");
