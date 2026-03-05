@@ -1837,28 +1837,6 @@ await createVaultAuditLog(
   }
 });
 
-// GET VAULT STORAGE INFO
-app.get("/api/vaults/:vaultId/storage", authenticateToken, async (req, res) => {
-  try {
-    const { vaultId } = req.params;
-
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    const storageUsed = await getVaultStorageUsed(vaultId);
-
-    res.status(200).json({
-      storageUsed,
-      storageLimit: VAULT_STORAGE_LIMIT,
-      storageRemaining: VAULT_STORAGE_LIMIT - storageUsed,
-      percentUsed: ((storageUsed / VAULT_STORAGE_LIMIT) * 100).toFixed(1),
-    });
-  } catch (error) {
-    console.error("Get Storage Error:", error);
-    res.status(500).json({ message: "Server error fetching storage info" });
-  }
-});
-
 
 
 // ── Schemas ─────────────────────────────────────────────────
@@ -1889,51 +1867,6 @@ const fileSchema = new mongoose.Schema({
 
 // ZKSalt schema (already in server_zk_additions.js, shown here for reference):
 // const ZKSalt = mongoose.model("ZKSalt", zkSaltSchema);
-
-
-// ════════════════════════════════════════════════════════════
-// 1. GET /api/vaults/:vaultId/files
-//    Returns all non-deleted files in a vault.
-//    Optional ?folderId=xxx to filter by folder.
-// ════════════════════════════════════════════════════════════
-app.get("/api/vaults/:vaultId/files", authenticateToken, async (req, res) => {
-  try {
-    const { vaultId } = req.params;
-    const { folderId } = req.query;
-
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
-    if (!vault) return res.status(404).json({ message: "Vault not found" });
-
-    const query = { vaultId, userId: req.user.userId, isDeleted: false };
-    if (folderId) query.folderId = folderId;
-
-    const files = await VaultFile.find(query).sort({ uploadedAt: -1 });
-
-    res.status(200).json({
-      files: files.map(f => ({
-        id:          f._id,
-        folderId:    f.folderId,
-        name:        f.originalName,
-        mimeType:    f.mimeType,
-        size:        f.size,
-        uploadedAt:  f.uploadedAt,
-        isEncrypted: f.isEncrypted,
-        category:    f.category,
-        tags:        f.tags,
-        description: f.description,
-        label:       f.label,
-        shared:      f.shared,
-        views:       f.views,
-        downloads:   f.downloads,
-      })),
-      total: files.length,
-    });
-  } catch (error) {
-    console.error("Get Files Error:", error);
-    res.status(500).json({ message: "Server error fetching files" });
-  }
-});
-
 
 // ════════════════════════════════════════════════════════════
 // 2. GET /api/vaults/:vaultId/storage
