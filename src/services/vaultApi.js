@@ -84,30 +84,34 @@ export async function unlockVaultKey(vaultId, hasPassword, passphrase = null, sa
     const lsKey = `zk_vault_key_${vaultId}`;
 
     // Always fetch from server first — server is source of truth
-    try {
-      const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "include",
-      });
-      if (res.ok) {
-        const { keyHex } = await res.json();
-        if (keyHex) {
-          localStorage.setItem(lsKey, keyHex);
-          storeVaultKeyHex(vaultId, keyHex);
-          const key = await importKeyFromHex(keyHex);
-          _keyCache.set(vaultId, key);
-          return key;
-        }
+    const res = await fetch(`${API_BASE_URL}/vaults/${vaultId}/zk-key`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+
+    if (res.ok) {
+      const { keyHex } = await res.json();
+      if (keyHex) {
+        localStorage.setItem(lsKey, keyHex);
+        storeVaultKeyHex(vaultId, keyHex);
+        const key = await importKeyFromHex(keyHex);
+        _keyCache.set(vaultId, key);
+        return key;
       }
-    } catch (e) {
-      console.warn("Could not fetch key from server:", e.message);
     }
 
-    // No key on server — check local storage
+    // Server returned an error — check if this is a shared member (403 = no permission, not owner)
+    // Shared members must get the key from the server; they must NOT generate a new one.
+    if (res.status === 403) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || "You don't have permission to access this vault's key");
+    }
+
+    // For the owner: server returned 404 (key not yet stored) — check localStorage or generate
     let hex = localStorage.getItem(lsKey) || getVaultKeyHex(vaultId);
 
     if (!hex) {
-      // Truly new vault — generate fresh key
+      // Truly new vault owned by this user — generate fresh key
       const { key, rawHex } = await generateRandomKey();
       hex = rawHex;
       localStorage.setItem(lsKey, hex);

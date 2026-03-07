@@ -2163,52 +2163,6 @@ await createVaultAuditLog(
   }
 );
 
-// ════════════════════════════════════════════════════════════
-// GET /api/vaults/:vaultId/files/:fileId/preview
-// View-only metadata endpoint — requires vault access (viewer+),
-// does NOT require canDownload. Returns file info so the frontend
-// can show a read-only info panel without attempting decryption.
-// ════════════════════════════════════════════════════════════
-app.get(
-  "/api/vaults/:vaultId/files/:fileId/preview",
-  authenticateToken,
-  checkVaultAccess("viewer"),
-  async (req, res) => {
-    try {
-      const { vaultId, fileId } = req.params;
-      const file = await VaultFile.findOne({ _id: fileId, vaultId, isDeleted: false });
-      if (!file) return res.status(404).json({ message: "File not found" });
-
-      // Increment view counter
-      await VaultFile.findByIdAndUpdate(fileId, { $inc: { views: 1 } });
-      await createVaultAuditLog(
-        vaultId, req.user.userId, req.user.email,
-        "File Viewed", req,
-        { id: file._id, name: file.originalName },
-        "success"
-      );
-
-      res.json({
-        id:          file._id,
-        name:        file.originalName,
-        mimeType:    file.mimeType,
-        size:        file.size,
-        isEncrypted: file.isEncrypted ?? true,
-        uploadedAt:  file.uploadedAt,
-        category:    file.category || "General",
-        tags:        file.tags || [],
-        description: file.description || "",
-        views:       (file.views || 0) + 1,
-        downloads:   file.downloads || 0,
-        shared:      file.shared ?? false,
-      });
-    } catch (error) {
-      console.error("Preview File Error:", error);
-      res.status(500).json({ message: "Server error during preview" });
-    }
-  }
-);
-
 app.get("/api/vaults/:vaultId/files/:fileId/stream", async (req, res) => {
   try {
     // Accept token from query param (since browser fetch from blob URL won't have auth header)
@@ -4424,12 +4378,30 @@ app.post("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
 app.get("/api/vaults/:vaultId/zk-key", authenticateToken, async (req, res) => {
   try {
     const { vaultId } = req.params;
+    const userId = req.user.userId;
 
-    // Still enforce ownership before returning the key
-    const vault = await Vault.findOne({ _id: vaultId, userId: req.user.userId, isActive: true });
+    const vault = await Vault.findOne({ _id: vaultId, isActive: true });
     if (!vault) return res.status(404).json({ message: "Vault not found" });
 
-    // Query by vaultId only — don't filter by userId on ZKSalt
+    const isOwner = vault.userId.toString() === userId;
+
+    if (!isOwner) {
+      // Shared member — must have an active share with canDownload
+      const user = await User.findById(userId).select("email");
+      const share = await VaultShare.findOne({
+        vaultId,
+        status: "active",
+        $or: [{ userId }, { email: user?.email }],
+      });
+      if (!share) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      if (!share.canDownload) {
+        return res.status(403).json({ message: "You don't have download permission for this vault" });
+      }
+    }
+
+    // Owner or authorised shared member — return the key
     const record = await ZKSalt.findOne({ vaultId });
     if (!record) return res.status(404).json({ message: "No key found" });
 
