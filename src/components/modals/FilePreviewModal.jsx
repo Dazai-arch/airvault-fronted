@@ -629,7 +629,19 @@ export default function FilePreviewModal({
           { headers: { Authorization: `Bearer ${token}` }, credentials: "include" }
         );
         if (!fileRes.ok) throw new Error("Could not fetch file from server");
-        const buf = await fileRes.arrayBuffer();
+
+        let buf;
+        const ct = fileRes.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          // Local dev: JSON { localPath } → fetch actual bytes from that URL
+          const { downloadUrl, localPath } = await fileRes.json();
+          const encRes = await fetch(downloadUrl || localPath);
+          if (!encRes.ok) throw new Error("Could not fetch encrypted file");
+          buf = await encRes.arrayBuffer();
+        } else {
+          // Production (R2): raw encrypted bytes streamed directly
+          buf = await fileRes.arrayBuffer();
+        }
 
         let finalBlob;
         if (file.isEncrypted) {

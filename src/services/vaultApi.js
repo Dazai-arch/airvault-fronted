@@ -321,14 +321,9 @@ export const vaultApi = {
         xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve(JSON.parse(xhr.responseText));
-          } else if (xhr.status === 401) {
+          } else if (xhr.status === 401 || xhr.status === 403) {
             handleAuthError("Session expired");
             reject(new Error("Session expired"));
-          } else if (xhr.status === 403) {
-            // 403 = permission denied (not a session issue — don't wipe the token)
-            let msg = "You don't have upload permission for this vault";
-            try { msg = JSON.parse(xhr.responseText)?.message || msg; } catch {}
-            reject(new Error(msg));
           } else {
             try { reject(new Error(JSON.parse(xhr.responseText).message || "Upload failed")); }
             catch { reject(new Error("Upload failed")); }
@@ -357,12 +352,21 @@ export const vaultApi = {
     );
     if (!response.ok) throw new Error("Could not get download URL");
 
-    const { downloadUrl, localPath } = await response.json();
-    const url = downloadUrl || localPath;
+    const contentType = response.headers.get("content-type") || "";
+    let encryptedBuf;
 
-    const encResponse = await fetch(url);
-    if (!encResponse.ok) throw new Error("Could not fetch encrypted file");
-    const encryptedBuf = await encResponse.arrayBuffer();
+    if (contentType.includes("application/json")) {
+      // Local dev: server returns JSON { localPath, originalName, mimeType, isEncrypted }
+      // then we fetch the actual file bytes from that URL
+      const { downloadUrl, localPath } = await response.json();
+      const url = downloadUrl || localPath;
+      const encResponse = await fetch(url);
+      if (!encResponse.ok) throw new Error("Could not fetch encrypted file");
+      encryptedBuf = await encResponse.arrayBuffer();
+    } else {
+      // Production (R2): server streams raw encrypted bytes directly
+      encryptedBuf = await response.arrayBuffer();
+    }
 
     const key       = getVaultKey(vaultId);
     const plainBlob = await decryptToBlob(encryptedBuf, key, mimeType || "application/octet-stream");
