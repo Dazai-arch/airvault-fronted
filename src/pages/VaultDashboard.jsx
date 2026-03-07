@@ -1155,7 +1155,7 @@ const VaultDashboard = () => {
                                     )}
                                   </AnimatePresence>
                                   <div className="flex gap-1.5">
-                                    <button onClick={() => navigate(`/vault/${activeVault.id}/files`)}
+                                    <button onClick={() => navigate(`/vault/file`)}
                                       className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 border ${isDark ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20" : "bg-cyan-50 border-cyan-200 text-cyan-600 hover:bg-cyan-100"}`}>
                                       <FolderOpen className="w-3 h-3" /><span className="hidden sm:inline">Open</span>
                                     </button>

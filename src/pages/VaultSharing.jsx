@@ -889,7 +889,7 @@ const VaultSharing = () => {
                 {/* Access Log link */}
                 <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
                   <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => navigate(`/vault/${activeVault.id}/access-log`)}
+                    onClick={() => navigate(`/vault/accesslog`)}
                     className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl border font-semibold text-sm transition-all duration-300 ${isDark ? "bg-slate-800/50 border-slate-700/50 text-white hover:border-cyan-500/40 hover:bg-slate-800/70" : "bg-white/80 border-gray-200 text-gray-900 hover:border-cyan-500/40 hover:bg-white"}`}>
                     <div className="flex items-center gap-3">
                       <SectionIcon gradient="from-emerald-500 to-teal-600" Icon={Wifi} />
