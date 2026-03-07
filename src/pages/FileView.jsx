@@ -1149,8 +1149,8 @@ const FileView = () => {
             vaultId={vaultId}
             apiBaseUrl={import.meta.env.VITE_API_URL || "http://localhost:5000/api"}
             canDownload={userPerms.canDownload}
-            vaultKey={previewFile.viewOnly ? null : vaultCryptoKey}
-            viewOnly={previewFile.viewOnly}
+            vaultKey={previewFile.viewOnly || !vaultCryptoKey ? null : vaultCryptoKey}
+            viewOnly={previewFile.viewOnly || !vaultCryptoKey}
           />
         )}
       </AnimatePresence>
