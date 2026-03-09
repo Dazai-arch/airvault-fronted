@@ -937,7 +937,7 @@ const FileView = () => {
 
                   {/* Grid */}
                   {!folderRestricted && viewMode === "grid" && visibleFiles.length > 0 && (
-                    <div className={`grid gap-3 ${selectedFile ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"}`}>
+                    <div className={`grid gap-3 isolate ${selectedFile ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"}`}>
                       {visibleFiles.map((file) => {
                         const ft    = getFC(file.type);
                         const FIcon = ft.Icon;
@@ -948,7 +948,7 @@ const FileView = () => {
                             onMouseEnter={() => setHoveredId(file.id)}
                             onMouseLeave={() => setHoveredId(null)}
                             onClick={() => !isDel && setSelectedFile(isSel ? null : file)}
-                            className={`group relative rounded-2xl border backdrop-blur-xl cursor-pointer p-4 overflow-hidden transition-all duration-300 hover:-translate-y-1 shadow-xl ${
+                            className={`group relative rounded-2xl border backdrop-blur-xl cursor-pointer p-4 overflow-hidden transition-all duration-300 hover:-translate-y-1 shadow-xl isolate ${
                               isSel
                                 ? isDark ? "bg-cyan-500/10 border-cyan-500/40 shadow-cyan-500/10" : "bg-cyan-50 border-cyan-400 shadow-cyan-500/10"
                                 : isDark ? "bg-slate-800/50 border-slate-700/50 hover:border-cyan-500/40 hover:shadow-cyan-500/10" : "bg-white/80 border-gray-200 hover:border-cyan-500/50"
@@ -1020,7 +1020,7 @@ const FileView = () => {
 
                   {/* List */}
                   {!folderRestricted && viewMode === "list" && visibleFiles.length > 0 && (
-                    <div className={`${card} overflow-hidden`}>
+                    <div className={`relative z-10 ${card} overflow-hidden`}>
                       <div className={`grid grid-cols-12 gap-2 px-4 py-2.5 border-b text-[10px] font-bold uppercase tracking-widest ${isDark ? "border-slate-700/50 text-gray-500" : "border-gray-200 text-gray-400"}`}>
                         <span className="col-span-5">File</span>
                         <span className="col-span-2 hidden sm:block">Type</span>
