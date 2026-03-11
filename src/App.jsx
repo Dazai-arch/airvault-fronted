@@ -93,12 +93,11 @@ function App() {
     setIsLoading(false);
   };
 
-  if (isLoading) {
-    return <LoadingScreen onLoadingComplete={handleLoadingComplete} />;
-  }
+ 
 
   return (
     <ThemeProvider>
+      {isLoading && <LoadingScreen onLoadingComplete={handleLoadingComplete} />}
       <BrowserRouter>
         <VaultProvider>
           <Routes>

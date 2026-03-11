@@ -1,18 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-
-// Self-contained dark mode hook — no ThemeProvider required
-const useIsDark = () => {
-  const [isDark, setIsDark] = useState(
-    () => window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? true
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (e) => setIsDark(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return isDark;
-};
+import { useTheme } from "../context/ThemeContext";
 
 const r = (a, b) => Math.random() * (b - a) + a;
 const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&";
@@ -38,7 +25,7 @@ const ScrambleText = ({ text, run, duration = 1000 }) => {
 };
 
 export default function LoadingScreen({ onLoadingComplete }) {
-  const isDark = useIsDark(); // ← replaces useTheme()
+  const { isDark } = useTheme();
 
   const [pct, setPct]     = useState(0);
   const [phase, setPhase] = useState(0);
