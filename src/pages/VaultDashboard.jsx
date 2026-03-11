@@ -15,6 +15,7 @@ import HamburgerMenu from "../components/layout/HamburgerMenu";
 import VaultTopBar from "../components/layout/VaultTopBar";
 import { vaultApi } from "../services/vaultApi";
 import { useNavigate } from "react-router-dom";
+import VaultCopilot from "../components/ai/VaultCopilot";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -1364,6 +1365,8 @@ const VaultDashboard = () => {
         .vault-scrollbar::-webkit-scrollbar-thumb { background: rgba(6,182,212,0.4); border-radius: 2px; }
         .vault-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(6,182,212,0.65); }
       `}</style>
+
+      <VaultCopilot vaultId={activeVault?.id} isOwner={isOwner} />
     </div>
   );
 };

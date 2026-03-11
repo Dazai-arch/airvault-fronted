@@ -2984,7 +2984,7 @@ app.patch("/api/vaults/:vaultId/files/:fileId/view", authenticateToken, async (r
   try {
     const { vaultId, fileId } = req.params;
     await VaultFile.findOneAndUpdate(
-      { _id: fileId, vaultId, userId: req.user.userId, isDeleted: false },
+      { _id: fileId, vaultId, isDeleted: false },
       { $inc: { views: 1 } }
     );
     res.json({ ok: true });
@@ -4509,6 +4509,182 @@ app.patch("/api/vaults/:vaultId/password", authenticateToken, async (req, res) =
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VAULT COPILOT  —  POST /api/vaults/:vaultId/copilot
+// Powered by Gemini 2.0 Flash (free tier — 1,500 req/day, no credit card)
+//
+// ZK-safe: only metadata is sent to the AI. File content, encryption keys,
+// passwords, and raw key material are NEVER included in the prompt.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post(
+  "/api/vaults/:vaultId/copilot",
+  authenticateToken,
+  checkVaultAccess("viewer"),
+  async (req, res) => {
+    try {
+      const { vaultId } = req.params;
+      const { message, history = [] } = req.body;
+
+      if (!message || typeof message !== "string" || message.trim().length === 0) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+      if (message.length > 1000) {
+        return res.status(400).json({ message: "Message too long (max 1000 chars)" });
+      }
+
+      // ── 1. Gather metadata context (ZK-safe only) ──────────────────────────
+
+      const vault = req.vault;
+
+      // Files — metadata only, no storedKey (R2 path), no encrypted bytes
+      const files = await VaultFile.find({ vaultId, isDeleted: false })
+        .select("originalName mimeType size category tags uploadedAt views downloads folderId shared label")
+        .lean();
+
+      // Access log — last 200 events
+      const accessLog = await VaultAuditLog.find({ vaultId })
+        .sort({ timestamp: -1 })
+        .limit(200)
+        .select("email action fileName device browser os location status timestamp")
+        .lean();
+
+      // Members
+      const members = await VaultShare.find({ vaultId })
+        .select("email role permissions canDownload status joinedAt createdAt")
+        .lean();
+
+      // Security settings
+      const security = await VaultSecurity.findOne({ vaultId })
+        .select("blockAllDownloads deviceRestricted isLocked")
+        .lean();
+
+      // Storage summary
+      const totalBytes = files.reduce((sum, f) => sum + (f.size || 0), 0);
+      const byType = files.reduce((acc, f) => {
+        const cat = f.category || "General";
+        acc[cat] = (acc[cat] || 0) + (f.size || 0);
+        return acc;
+      }, {});
+
+      // ── 2. Build the system prompt ──────────────────────────────────────────
+
+      const systemPrompt = `You are Vault Copilot, an AI assistant embedded inside AirVault — a zero-knowledge encrypted file storage application.
+
+ZERO-KNOWLEDGE RULES (critical):
+- You have NO access to file content. Files are AES-GCM encrypted client-side. You only see metadata.
+- You MUST NEVER ask the user to share file contents, passwords, encryption keys, or key material.
+- You MUST NEVER suggest or imply you can read what is inside files.
+- If asked about file content, clearly explain you can only see metadata.
+- Never mention or expose the storedKey (R2 object path) field.
+
+YOUR ROLE:
+- Answer questions about vault activity, file metadata, members, permissions, and security settings.
+- Identify anomalies, summarise trends, and give actionable recommendations.
+- Be concise, helpful, and security-conscious.
+- Use plain English. No markdown headers — use short paragraphs or bullet points only.
+
+VAULT CONTEXT:
+Vault name: ${vault.name}
+Description: ${vault.description || "None"}
+Created: ${new Date(vault.createdAt).toDateString()}
+Password protected: ${vault.hasPassword ? "Yes" : "No"}
+Total files: ${files.length}
+Total storage used: ${(totalBytes / 1024 / 1024).toFixed(2)} MB
+Tags: ${(vault.tags || []).join(", ") || "None"}
+
+Security settings:
+- Downloads blocked for all members: ${security?.blockAllDownloads ? "Yes" : "No"}
+- Device restricted: ${security?.deviceRestricted ? "Yes" : "No"}
+- Vault locked: ${security?.isLocked ? "Yes" : "No"}
+
+Storage by category:
+${Object.entries(byType).map(([cat, bytes]) => `  ${cat}: ${(bytes / 1024 / 1024).toFixed(2)} MB`).join("\n")}
+
+FILES (metadata only — ${files.length} total):
+${files.slice(0, 100).map(f =>
+  `  - "${f.originalName}" | ${f.category || "General"} | ${(f.size / 1024).toFixed(1)} KB | uploaded ${new Date(f.uploadedAt).toDateString()} | views: ${f.views} | downloads: ${f.downloads}${f.shared ? " | shared publicly" : ""}`
+).join("\n")}${files.length > 100 ? `\n  ... and ${files.length - 100} more files` : ""}
+
+MEMBERS (${members.length} total):
+${members.map(m =>
+  `  - ${m.email} | ${m.role} | status: ${m.status} | download: ${m.canDownload ? "yes" : "no"} | joined: ${m.joinedAt ? new Date(m.joinedAt).toDateString() : "pending"}`
+).join("\n")}
+
+RECENT ACCESS LOG (last ${accessLog.length} events):
+${accessLog.slice(0, 100).map(e =>
+  `  [${new Date(e.timestamp).toISOString()}] ${e.email} — ${e.action}${e.fileName ? ` ("${e.fileName}")` : ""} | ${e.device || "?"} | ${e.location || "?"} | ${e.status}`
+).join("\n")}${accessLog.length > 100 ? `\n  ... and ${accessLog.length - 100} more events` : ""}
+
+Current user role: ${req.isOwner ? "owner" : req.vaultShare?.role || "viewer"}
+Current date: ${new Date().toISOString()}`;
+
+      // ── 3. Build message history for multi-turn ─────────────────────────────
+
+      // Sanitise history — only keep role/content, cap at last 10 turns
+      const safeHistory = (Array.isArray(history) ? history : [])
+        .slice(-10)
+        .filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
+
+      const messages = [
+        ...safeHistory,
+        { role: "user", content: message.trim() }
+      ];
+
+      // ── 4. Call Gemini 2.0 Flash API ──────────────────────────────────────────
+
+      // Gemini uses "model" instead of "assistant" for the AI role
+      const geminiMessages = messages.map(m => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+  },
+  body: JSON.stringify({
+    model: "llama-3.1-8b-instant",
+    messages: [
+      { role: "system", content: systemPrompt },
+      ...messages,
+    ],
+    max_tokens: 1024,
+    temperature: 0.4,
+  }),
+});
+
+if (!groqRes.ok) {
+  const errBody = await groqRes.json().catch(() => ({}));
+  console.error("Groq API error:", groqRes.status, errBody);
+  return res.status(502).json({ message: "AI service unavailable. Please try again." });
+}
+
+const groqData = await groqRes.json();
+const reply = groqData?.choices?.[0]?.message?.content || "Sorry, I couldn't generate a response.";
+      // ── 5. Log the copilot interaction ─────────────────────────────────────
+
+      await createVaultAuditLog(
+        vaultId,
+        req.user.userId,
+        req.user.email,
+        "Copilot Query",
+        req,
+        { name: message.slice(0, 80) }
+      );
+
+      return res.status(200).json({ reply });
+
+    } catch (error) {
+      console.error("Vault Copilot Error:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  }
+);
 
 // LOGOUT
 app.post("/api/auth/logout", authenticateToken, async (req, res) => {

@@ -16,6 +16,7 @@ import HamburgerMenu from "../components/layout/HamburgerMenu";
 import vaultApi, { getVaultKey } from "../services/vaultApi";
 import ShareModal from "../components/modals/ShareModal";
 import FilePreviewModal from "../components/modals/FilePreviewModal";
+import VaultCopilot from "../components/ai/VaultCopilot";
 
 const SIDEBAR_COLLAPSED = 60;
 const SIDEBAR_EXPANDED  = 220;
@@ -592,6 +593,23 @@ const FileView = () => {
     }
   }, []);
 
+  // ── increment view count when file is previewed ──────────────
+  const incrementViewCount = useCallback(async (fileId) => {
+    const id = vaultIdRef.current;
+    if (!id || !fileId) return;
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:5000/api"}/vaults/${id}/files/${fileId}/view`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setFiles(prev => prev.map(f => f.id === fileId ? { ...f, views: (f.views || 0) + 1 } : f));
+      setSelectedFile(prev => prev?.id === fileId ? { ...prev, views: (prev.views || 0) + 1 } : prev);
+    } catch (e) {
+      console.warn("View count update failed:", e.message);
+    }
+  }, []);
+
   // ── after share success: mark file as shared in local state ──
   const handleShareSuccess = useCallback((fileId) => {
     setFiles(prev => prev.map(f => f.id === fileId ? { ...f, shared: true } : f));
@@ -1104,7 +1122,10 @@ const FileView = () => {
                         onDelete={handleDelete}
                         onDownload={handleDownload}
                         onShare={(f) => setShareFile(f)}
-                        onPreview={(f, viewOnly) => setPreviewFile({ file: f, viewOnly: !!viewOnly })}
+                        onPreview={(f, viewOnly) => {
+                          setPreviewFile({ file: f, viewOnly: !!viewOnly });
+                          incrementViewCount(f.id);
+                        }}
                         copied={copied}
                         onCopy={handleCopy}
                         isDark={isDark}
@@ -1161,6 +1182,9 @@ const FileView = () => {
         .vault-scrollbar::-webkit-scrollbar-thumb { background: rgba(6,182,212,0.4); border-radius: 2px; }
         .vault-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(6,182,212,0.65); }
       `}</style>
+
+      {/* ── Vault Copilot ── */}
+      <VaultCopilot vaultId={vaultId} isOwner={userPerms?.isOwner ?? false} />
     </div>
   );
 };
