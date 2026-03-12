@@ -38,12 +38,36 @@ const HamburgerMenu = () => {
     return () => { clearTimeout(t); document.removeEventListener("mousedown", handler); };
   }, [isMobile, isExpanded]);
 
-  // ── Read user ─────────────────────────────────────────────
-  const rawUser     = JSON.parse(localStorage.getItem("user") || "{}");
-  const userData    = rawUser?.user ?? rawUser;
+
+  // ── Read user (re-reads when localStorage changes) ────────
+  const [userData, setUserData] = useState(() => {
+    const raw = JSON.parse(localStorage.getItem("user") || "{}");
+    return raw?.user ?? raw;
+  });
+
+  useEffect(() => {
+    const refresh = () => {
+      const raw = JSON.parse(localStorage.getItem("user") || "{}");
+      setUserData(raw?.user ?? raw);
+    };
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("userProfileUpdated", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("userProfileUpdated", refresh);
+    };
+  }, []);
+
   const displayName = userData?.fullName || userData?.name || "User";
   const userEmail   = userData?.email || "";
   const userInitial = displayName.charAt(0).toUpperCase() || "U";
+  const userAvatar  = userData?.profilePicture || userData?.profileImage || null;
+  const API_BASE    = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+  const avatarSrc   = userAvatar
+    ? (userAvatar.startsWith("http") ? userAvatar : `${API_BASE}${userAvatar}`)
+    : null;
 
   const expand = () => {
     setIsExpanded(true);
@@ -284,8 +308,10 @@ const HamburgerMenu = () => {
             }`}
           >
             <span className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isDark ? "bg-slate-800" : "bg-gray-100"}`} />
-            <div className="relative w-[18px] h-[18px] rounded-md bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-[9px] font-bold shadow-sm flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
-              {userInitial}
+            <div className="relative w-[18px] h-[18px] rounded-md bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white text-[9px] font-bold shadow-sm flex-shrink-0 group-hover:scale-110 transition-transform duration-200 overflow-hidden">
+              {avatarSrc
+                ? <img src={avatarSrc} alt="avatar" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = "none"; }} />
+                : userInitial}
             </div>
             <AnimatePresence>
               {isExpanded && (

@@ -90,7 +90,11 @@ const UserProfile = () => {
     fetchProfile();
   }, [activeVault, showError]);
 
-  const displayedImage = imagePreview || profile.profileImage;
+  const API_BASE = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
+  const rawImage = imagePreview || profile.profileImage;
+  const displayedImage = rawImage
+    ? (rawImage.startsWith("http") || rawImage.startsWith("blob") ? rawImage : `${API_BASE}${rawImage}`)
+    : null;
 
   const handleEditToggle  = () => { setIsEditing(true); setForm(profile); setErrors({}); };
   const handleCancel      = () => { setIsEditing(false); setForm(profile); setErrors({}); setImagePreview(""); setImageFile(null); };
@@ -128,10 +132,18 @@ const UserProfile = () => {
       const mergedProfile = apiUser ? normalizeUser(apiUser, activeVault) : updatedLocal;
       setProfile(mergedProfile);
       setForm(mergedProfile);
-      localStorage.setItem("user", JSON.stringify({ ...(JSON.parse(localStorage.getItem("user") || "{}") || {}), ...mergedProfile, name: mergedProfile.fullName, fullName: mergedProfile.fullName }));
+      const existing = JSON.parse(localStorage.getItem("user") || "{}") || {};
+      localStorage.setItem("user", JSON.stringify({
+        ...existing,
+        ...mergedProfile,
+        name: mergedProfile.fullName,
+        fullName: mergedProfile.fullName,
+        profileImage: mergedProfile.profileImage,
+        profilePicture: mergedProfile.profileImage,
+      }));
+      window.dispatchEvent(new Event("userProfileUpdated"));
       setIsEditing(false); setImagePreview(""); setImageFile(null);
       showSuccess("Profile updated successfully");
-    } catch (error) {
       showError(error.message || "Profile update failed");
     } finally {
       setIsSaving(false);
