@@ -43,6 +43,7 @@ const UserProfile = () => {
   const [errors,          setErrors]           = useState({});
   const [imagePreview,    setImagePreview]     = useState("");
   const [imageFile,       setImageFile]        = useState(null);
+  const [removeImage,     setRemoveImage]      = useState(false);
   const [showDeleteModal, setShowDeleteModal]  = useState(false);
   const [deleteInput,     setDeleteInput]      = useState("");
   const [sidebarExpanded, setSidebarExpanded]  = useState(false);
@@ -91,13 +92,15 @@ const UserProfile = () => {
   }, [activeVault, showError]);
 
   const API_BASE = import.meta.env.VITE_API_URL?.replace("/api", "") || "http://localhost:5000";
-  const rawImage = imagePreview || profile.profileImage;
+  // removeImage=true means user explicitly cleared the photo
+  const rawImage = removeImage ? null : (imagePreview || profile.profileImage);
   const displayedImage = rawImage
-    ? (rawImage.startsWith("http") || rawImage.startsWith("blob") ? rawImage : `${API_BASE}${rawImage}`)
+    ? (rawImage.startsWith("http") || rawImage.startsWith("blob:") ? rawImage : `${API_BASE}${rawImage}`)
     : null;
 
+
   const handleEditToggle  = () => { setIsEditing(true); setForm(profile); setErrors({}); };
-  const handleCancel      = () => { setIsEditing(false); setForm(profile); setErrors({}); setImagePreview(""); setImageFile(null); };
+  const handleCancel = () => { setIsEditing(false); setForm(profile); setErrors({}); setImagePreview(""); setImageFile(null); setRemoveImage(false); };
   const handleFieldChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setErrors((prev) => ({ ...prev, [field]: "" }));
@@ -114,22 +117,29 @@ const UserProfile = () => {
   const handleSave = async () => {
     if (!validateForm()) { showError("Please fix the highlighted fields"); return; }
     setIsSaving(true);
-    const updatedLocal = { ...profile, fullName: form.fullName.trim(), dob: form.dob, profileImage: imagePreview || profile.profileImage };
     try {
       let apiUser = null;
       if (typeof vaultApi.updateUserProfile === "function") {
-        let payload = { fullName: updatedLocal.fullName, dob: updatedLocal.dob };
+        const formData = new FormData();
+        formData.append("fullName", form.fullName.trim());
+        if (form.dob) formData.append("dob", form.dob);
         if (imageFile) {
-          const formData = new FormData();
-          formData.append("fullName", updatedLocal.fullName);
-          if (updatedLocal.dob) formData.append("dob", updatedLocal.dob);
           formData.append("profilePicture", imageFile);
-          payload = formData;
+        } else if (removeImage) {
+          formData.append("removeProfilePicture", "true");
         }
-        const response = await vaultApi.updateUserProfile(payload);
+        const response = await vaultApi.updateUserProfile(formData);
         apiUser = response?.user || response?.profile || response?.data?.user || null;
       }
+      const updatedLocal = {
+        ...profile,
+        fullName: form.fullName.trim(),
+        dob: form.dob,
+        profileImage: removeImage ? "" : (imagePreview || profile.profileImage),
+      };
       const mergedProfile = apiUser ? normalizeUser(apiUser, activeVault) : updatedLocal;
+      // If user removed image, clear it from mergedProfile too
+      if (removeImage) mergedProfile.profileImage = "";
       setProfile(mergedProfile);
       setForm(mergedProfile);
       const existing = JSON.parse(localStorage.getItem("user") || "{}") || {};
@@ -142,22 +152,35 @@ const UserProfile = () => {
         profilePicture: mergedProfile.profileImage,
       }));
       window.dispatchEvent(new Event("userProfileUpdated"));
-      setIsEditing(false); setImagePreview(""); setImageFile(null);
+      setIsEditing(false);
+      setImagePreview("");
+      setImageFile(null);
+      setRemoveImage(false);
       showSuccess("Profile updated successfully");
+    } catch (error) {
       showError(error.message || "Profile update failed");
     } finally {
       setIsSaving(false);
     }
   };
 
+
   const handleImageSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setImageFile(file);
+    setRemoveImage(false);
     const reader = new FileReader();
     reader.onloadend = () => setImagePreview(reader.result);
     reader.readAsDataURL(file);
   };
+
+  const handleRemoveImage = () => {
+    setImageFile(null);
+    setImagePreview("");
+    setRemoveImage(true);
+  };
+
 
   const handleDeleteAccount = async () => {
     try {
@@ -492,15 +515,41 @@ const UserProfile = () => {
                           )}
                         </div>
                         {isEditing && (
-                          <button onClick={() => fileRef.current?.click()}
-                            className={`absolute -bottom-2 -right-2 w-9 h-9 rounded-full border flex items-center justify-center shadow-lg transition-all ${
-                              isDark ? "bg-slate-800 border-slate-600 text-gray-300 hover:border-cyan-500/50 hover:text-white" : "bg-white border-gray-200 text-gray-600 hover:border-cyan-400"
-                            }`}>
-                            <Camera className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            {/* Camera button — change photo */}
+                            <button onClick={() => fileRef.current?.click()}
+                              title="Change photo"
+                              className={`absolute -bottom-2 -right-2 w-9 h-9 rounded-full border flex items-center justify-center shadow-lg transition-all ${
+                                isDark ? "bg-slate-800 border-slate-600 text-gray-300 hover:border-cyan-500/50 hover:text-white" : "bg-white border-gray-200 text-gray-600 hover:border-cyan-400"
+                              }`}>
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Remove button — only show if there's a photo to remove */}
+                            {(displayedImage) && (
+                              <button onClick={handleRemoveImage}
+                                title="Remove photo"
+                                className={`absolute -bottom-2 -left-2 w-9 h-9 rounded-full border flex items-center justify-center shadow-lg transition-all ${
+                                  isDark ? "bg-slate-800 border-red-500/40 text-red-400 hover:border-red-400 hover:text-red-300" : "bg-white border-red-200 text-red-400 hover:border-red-400"
+                                }`}>
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </motion.div>
+
+                    {/* Show label when a new image is selected */}
+                    {isEditing && imagePreview && (
+                      <p className={`text-[10px] mb-1 ${isDark ? "text-cyan-400" : "text-cyan-600"}`}>
+                        New photo selected — save to apply
+                      </p>
+                    )}
+                    {isEditing && removeImage && (
+                      <p className={`text-[10px] mb-1 ${isDark ? "text-red-400" : "text-red-500"}`}>
+                        Photo will be removed — save to apply
+                      </p>
+                    )}
 
                     <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
 
